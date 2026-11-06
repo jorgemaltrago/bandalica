@@ -1,4 +1,5 @@
 import { supabase } from "@/services/supabase";
+import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -19,13 +20,68 @@ export default function RepertoireScreen() {
 
   const [bandSongs, setBandSongs] = useState<any[]>([]);
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
+  const [isEditModalVisible, setIsEditModalVisible] = useState(false);
 
-  // Formulario para los campos de la tabla 'songs'
+  // Estados para controlar los selectores flotantes de tonalidad y género
+  const [isKeyPickerVisible, setIsKeyPickerVisible] = useState(false);
+  const [activeKeyTarget, setActiveKeyTarget] = useState<"new" | "edit">("new");
+
+  const [isGenrePickerVisible, setIsGenrePickerVisible] = useState(false);
+  const [activeGenreTarget, setActiveGenreTarget] = useState<"new" | "edit">(
+    "new",
+  );
+
+  // Estado para el mensaje flotante (Toast) elegante en lugar de alertas blancas
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 2500);
+  };
+
+  // Lista de 12 notas musicales en inglés
+  const musicalKeys = [
+    "C",
+    "C#",
+    "D",
+    "D#",
+    "E",
+    "F",
+    "F#",
+    "G",
+    "G#",
+    "A",
+    "A#",
+    "B",
+  ];
+
+  // Lista de géneros preestablecidos con Flamenco incluido
+  const musicGenres = [
+    "Blues",
+    "Pop",
+    "Rock",
+    "Heavy",
+    "Electrónica",
+    "Fusión",
+    "Flamenco",
+  ];
+
+  // Estados del formulario de creación
   const [newTitle, setNewTitle] = useState("");
-  const [newGenre, setNewGenre] = useState("");
-  const [newKey, setNewKey] = useState("");
+  const [newGenre, setNewGenre] = useState("Rock");
+  const [newKey, setNewKey] = useState("C");
   const [newTempo, setNewTempo] = useState("");
   const [newLyrics, setNewLyrics] = useState("");
+
+  // Estados del formulario de edición / detalle de canción seleccionada
+  const [selectedSong, setSelectedSong] = useState<any | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editGenre, setEditGenre] = useState("Rock");
+  const [editKey, setEditKey] = useState("C");
+  const [editTempo, setEditTempo] = useState("");
+  const [editLyrics, setEditLyrics] = useState("");
 
   useEffect(() => {
     if (bandId) {
@@ -33,7 +89,6 @@ export default function RepertoireScreen() {
     }
   }, [bandId]);
 
-  // Cargar las canciones filtradas directamente por el band_id de la banda actual
   const loadRepertoire = async () => {
     try {
       const { data, error } = await supabase
@@ -50,7 +105,6 @@ export default function RepertoireScreen() {
     }
   };
 
-  // Crear una canción nueva guardándola directamente en la tabla 'songs' con su band_id
   const handleCreateAndAddSong = async () => {
     if (!newTitle.trim()) {
       Alert.alert("Campo obligatorio", "Introduce el título de la canción.");
@@ -68,15 +122,15 @@ export default function RepertoireScreen() {
 
       const songPayload: any = {
         title: newTitle.trim(),
-        genre: newGenre.trim() || null,
-        key: newKey.trim() || null,
+        genre: newGenre || "Rock",
+        key: newKey || "C",
         tempo: newTempo.trim() || null,
         lyrics: newLyrics.trim() || null,
-        band_id: bandId, // Asignamos directamente la canción a esta banda[cite: 1]
+        band_id: bandId,
       };
 
       if (currentUserId) {
-        songPayload.created_by = currentUserId; //[cite: 1]
+        songPayload.created_by = currentUserId;
       }
 
       const { error: createError } = await supabase
@@ -85,33 +139,138 @@ export default function RepertoireScreen() {
 
       if (createError) throw createError;
 
-      Alert.alert(
-        "¡Creada!",
-        "Canción registrada y añadida al repertorio correctamente.",
-      );
-
-      // Limpiar formulario, cerrar modal y recargar lista
       setNewTitle("");
-      setNewGenre("");
-      setNewKey("");
+      setNewGenre("Rock");
+      setNewKey("C");
       setNewTempo("");
       setNewLyrics("");
       setIsAddModalVisible(false);
       loadRepertoire();
+
+      // Mensaje flotante elegante en vez de alerta blanca
+      showToast("Canción añadida correctamente");
     } catch (error: any) {
       Alert.alert("Error al registrar", error.message);
     }
   };
 
+  const handleUpdateSong = async () => {
+    if (!selectedSong || !editTitle.trim()) {
+      Alert.alert(
+        "Campo obligatorio",
+        "El título de la canción no puede estar vacío.",
+      );
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("songs")
+        .update({
+          title: editTitle.trim(),
+          genre: editGenre || "Rock",
+          key: editKey || "C",
+          tempo: editTempo.trim() || null,
+          lyrics: editLyrics.trim() || null,
+        })
+        .eq("id", selectedSong.id);
+
+      if (error) throw error;
+
+      setIsEditModalVisible(false);
+      loadRepertoire();
+
+      // Mensaje flotante elegante
+      showToast("Cambios actualizados correctamente");
+    } catch (error: any) {
+      Alert.alert("Error", "No se pudo actualizar la canción.");
+    }
+  };
+
+  const handleDeleteSong = async (songId: string) => {
+    Alert.alert(
+      "Eliminar canción",
+      "¿Deseas borrar esta canción del repertorio?",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Borrar",
+          style: "destructive",
+          onPress: async () => {
+            const { error } = await supabase
+              .from("songs")
+              .delete()
+              .eq("id", songId);
+            if (!error) {
+              setBandSongs((prev) => prev.filter((s) => s.id !== songId));
+              setIsEditModalVisible(false);
+              showToast("Canción eliminada");
+            } else {
+              Alert.alert("Error", "No se pudo eliminar la canción.");
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const openEditModal = (song: any) => {
+    setSelectedSong(song);
+    setEditTitle(song.title || "");
+    setEditGenre(song.genre || "Rock");
+    setEditKey(song.key || "C");
+    setEditTempo(song.tempo || "");
+    setEditLyrics(song.lyrics || "");
+    setIsEditModalVisible(true);
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.headerTitle}>🎵 Repertorio de la Banda</Text>
+      {/* AVISO FLOTANTE (TOAST) ESTILO OSCURO */}
+      {toastMessage && (
+        <View style={styles.toastContainer}>
+          <Ionicons
+            name="checkmark-circle"
+            size={20}
+            color="#00bcd4"
+            style={{ marginRight: 8 }}
+          />
+          <Text style={styles.toastText}>{toastMessage}</Text>
+        </View>
+      )}
+
+      {/* TÍTULO PRINCIPAL */}
+      <View
+        style={{ flexDirection: "row", alignItems: "center", marginBottom: 15 }}
+      >
+        <Ionicons
+          name="musical-notes-outline"
+          size={26}
+          color="#00bcd4"
+          style={{ marginRight: 8 }}
+        />
+        <Text style={styles.headerTitle}>Repertorio de la Banda</Text>
+      </View>
 
       <TouchableOpacity
         style={styles.primaryButton}
         onPress={() => setIsAddModalVisible(true)}
       >
-        <Text style={styles.primaryButtonText}>➕ Añadir / Crear Canción</Text>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Ionicons
+            name="add-circle-outline"
+            size={24}
+            color="#000"
+            style={{ marginRight: 8 }}
+          />
+          <Text style={styles.primaryButtonText}>Añadir / Crear Canción</Text>
+        </View>
       </TouchableOpacity>
 
       <Text style={styles.subHeader}>Canciones Activas</Text>
@@ -121,18 +280,44 @@ export default function RepertoireScreen() {
         </Text>
       ) : (
         bandSongs.map((song) => (
-          <View key={song.id} style={styles.songCard}>
-            <Text style={styles.songTitle}>{song.title}</Text>
-            <Text style={styles.songMeta}>
-              Género: {song.genre || "N/D"} | Tonalidad: {song.key || "N/D"} |
-              Tempo: {song.tempo || "N/D"}
-            </Text>
-            {song.lyrics ? (
-              <Text style={styles.songLyrics} numberOfLines={2}>
-                Letra: {song.lyrics}
-              </Text>
-            ) : null}
-          </View>
+          <TouchableOpacity
+            key={song.id}
+            style={styles.songCard}
+            onPress={() => openEditModal(song)}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={styles.songTitle}>{song.title}</Text>
+                <Text style={styles.songMeta}>
+                  Tonalidad: {song.key || "N/D"} | Tempo: {song.tempo || "N/D"}
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Ionicons
+                  name="create-outline"
+                  size={24}
+                  color="#00bcd4"
+                  style={{ marginRight: 14 }}
+                />
+                <TouchableOpacity
+                  style={styles.iconButtonAction}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    handleDeleteSong(song.id);
+                  }}
+                >
+                  <Ionicons name="trash-outline" size={24} color="#ff9800" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableOpacity>
         ))
       )}
 
@@ -140,7 +325,21 @@ export default function RepertoireScreen() {
       <Modal visible={isAddModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Añadir Tema al Repertorio</Text>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginBottom: 14,
+              }}
+            >
+              <Ionicons
+                name="musical-note-outline"
+                size={26}
+                color="#00bcd4"
+                style={{ marginRight: 10 }}
+              />
+              <Text style={styles.modalTitle}>Añadir Tema al Repertorio</Text>
+            </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
               <Text style={styles.label}>
@@ -153,29 +352,47 @@ export default function RepertoireScreen() {
                 value={newTitle}
                 onChangeText={setNewTitle}
               />
+
+              {/* BOTÓN DESPLEGABLE PARA GÉNERO (CREACIÓN) */}
+              <Text style={styles.label}>Género:</Text>
+              <TouchableOpacity
+                style={styles.pickerButton}
+                onPress={() => {
+                  setActiveGenreTarget("new");
+                  setIsGenrePickerVisible(true);
+                }}
+              >
+                <Text style={styles.pickerButtonText}>Género: {newGenre}</Text>
+                <Ionicons name="chevron-down" size={20} color="#00bcd4" />
+              </TouchableOpacity>
+
+              {/* BOTÓN DESPLEGABLE PARA TONALIDAD (CREACIÓN) */}
+              <Text style={styles.label}>Tonalidad:</Text>
+              <TouchableOpacity
+                style={styles.pickerButton}
+                onPress={() => {
+                  setActiveKeyTarget("new");
+                  setIsKeyPickerVisible(true);
+                }}
+              >
+                <Text style={styles.pickerButtonText}>
+                  Nota seleccionada: {newKey}
+                </Text>
+                <Ionicons name="chevron-down" size={20} color="#00bcd4" />
+              </TouchableOpacity>
+
               <TextInput
-                style={styles.input}
-                placeholder="Género (Ej: Rock, Metal)"
-                placeholderTextColor="#666"
-                value={newGenre}
-                onChangeText={setNewGenre}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Tonalidad (Ej: Am, C)"
-                placeholderTextColor="#666"
-                value={newKey}
-                onChangeText={setNewKey}
-              />
-              <TextInput
-                style={styles.input}
+                style={[styles.input, { marginTop: 8 }]}
                 placeholder="Tempo (Ej: 120 BPM)"
                 placeholderTextColor="#666"
                 value={newTempo}
                 onChangeText={setNewTempo}
               />
               <TextInput
-                style={[styles.input, { height: 70, textAlignVertical: "top" }]}
+                style={[
+                  styles.input,
+                  { height: 110, textAlignVertical: "top" },
+                ]}
                 placeholder="Letra de la canción (opcional)"
                 placeholderTextColor="#666"
                 multiline
@@ -187,17 +404,273 @@ export default function RepertoireScreen() {
                 style={styles.primaryButton}
                 onPress={handleCreateAndAddSong}
               >
-                <Text style={styles.primaryButtonText}>
-                  💾 Guardar Canción en la Banda
-                </Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Ionicons
+                    name="save-outline"
+                    size={22}
+                    color="#000"
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text style={styles.primaryButtonText}>
+                    Guardar Canción en la Banda
+                  </Text>
+                </View>
               </TouchableOpacity>
             </ScrollView>
 
             <TouchableOpacity
-              style={styles.modalCloseButton}
+              style={styles.modalCloseButtonOrange}
               onPress={() => setIsAddModalVisible(false)}
             >
-              <Text style={styles.modalCloseButtonText}>Cancelar</Text>
+              <Text style={styles.modalCloseButtonOrangeText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL PARA EDITAR Y VER DETALLES DE LA CANCIÓN */}
+      <Modal visible={isEditModalVisible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginBottom: 14,
+              }}
+            >
+              <Ionicons
+                name="create-outline"
+                size={26}
+                color="#00bcd4"
+                style={{ marginRight: 10 }}
+              />
+              <Text style={styles.modalTitle}>Editar Canción</Text>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.label}>Título:</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Título"
+                placeholderTextColor="#666"
+                value={editTitle}
+                onChangeText={setEditTitle}
+              />
+
+              {/* BOTÓN DESPLEGABLE PARA GÉNERO (EDICIÓN) */}
+              <Text style={styles.label}>Género:</Text>
+              <TouchableOpacity
+                style={styles.pickerButton}
+                onPress={() => {
+                  setActiveGenreTarget("edit");
+                  setIsGenrePickerVisible(true);
+                }}
+              >
+                <Text style={styles.pickerButtonText}>Género: {editGenre}</Text>
+                <Ionicons name="chevron-down" size={20} color="#00bcd4" />
+              </TouchableOpacity>
+
+              {/* BOTÓN DESPLEGABLE PARA TONALIDAD (EDICIÓN) */}
+              <Text style={styles.label}>Tonalidad:</Text>
+              <TouchableOpacity
+                style={styles.pickerButton}
+                onPress={() => {
+                  setActiveKeyTarget("edit");
+                  setIsKeyPickerVisible(true);
+                }}
+              >
+                <Text style={styles.pickerButtonText}>
+                  Nota seleccionada: {editKey}
+                </Text>
+                <Ionicons name="chevron-down" size={20} color="#00bcd4" />
+              </TouchableOpacity>
+
+              <Text style={[styles.label, { marginTop: 8 }]}>Tempo:</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Tempo"
+                placeholderTextColor="#666"
+                value={editTempo}
+                onChangeText={setEditTempo}
+              />
+              <Text style={styles.label}>Letra / Notas:</Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  { height: 150, textAlignVertical: "top" },
+                ]}
+                placeholder="Letra o notas registradas"
+                placeholderTextColor="#666"
+                multiline
+                value={editLyrics}
+                onChangeText={setEditLyrics}
+              />
+
+              <TouchableOpacity
+                style={styles.primaryButton}
+                onPress={handleUpdateSong}
+              >
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Ionicons
+                    name="save-outline"
+                    size={22}
+                    color="#000"
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text style={styles.primaryButtonText}>
+                    Actualizar Cambios
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </ScrollView>
+
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                marginTop: 10,
+              }}
+            >
+              <TouchableOpacity
+                style={[
+                  styles.modalCloseButtonDanger,
+                  { flex: 1, marginRight: 6 },
+                ]}
+                onPress={() =>
+                  selectedSong && handleDeleteSong(selectedSong.id)
+                }
+              >
+                <Text style={styles.modalCloseButtonText}>Eliminar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.modalCloseButtonOrange,
+                  { flex: 1, marginLeft: 6 },
+                ]}
+                onPress={() => setIsEditModalVisible(false)}
+              >
+                <Text style={styles.modalCloseButtonOrangeText}>Cerrar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* VENTANA FLOTANTE (SUB-MODAL) PARA SELECCIONAR EL GÉNERO */}
+      <Modal visible={isGenrePickerVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: "55%" }]}>
+            <Text style={styles.modalTitle}>Seleccionar Género Musical</Text>
+            <Text style={[styles.label, { marginBottom: 12, color: "#aaa" }]}>
+              Elige un género:
+            </Text>
+
+            <ScrollView contentContainerStyle={styles.keysGrid}>
+              {musicGenres.map((g) => {
+                const currentSelected =
+                  activeGenreTarget === "new" ? newGenre : editGenre;
+                const isSelected = currentSelected === g;
+                return (
+                  <TouchableOpacity
+                    key={`picker-genre-${g}`}
+                    style={[
+                      styles.genreChip,
+                      isSelected && styles.keyChipSelected,
+                    ]}
+                    onPress={() => {
+                      if (activeGenreTarget === "new") {
+                        setNewGenre(g);
+                      } else {
+                        setEditGenre(g);
+                      }
+                      setIsGenrePickerVisible(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.keyChipText,
+                        isSelected && styles.keyChipTextSelected,
+                      ]}
+                    >
+                      {g}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.smallBackButton}
+              onPress={() => setIsGenrePickerVisible(false)}
+            >
+              <Text style={styles.smallBackButtonText}>Volver</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* VENTANA FLOTANTE (SUB-MODAL) PARA SELECCIONAR LA TONALIDAD */}
+      <Modal visible={isKeyPickerVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { paddingBottom: 16 }]}>
+            <Text style={styles.modalTitle}>Seleccionar Tonalidad</Text>
+            <Text style={[styles.label, { marginBottom: 8, color: "#aaa" }]}>
+              Elige una nota musical:
+            </Text>
+
+            <View style={styles.keysGridCompact}>
+              {musicalKeys.map((k) => {
+                const currentSelected =
+                  activeKeyTarget === "new" ? newKey : editKey;
+                const isSelected = currentSelected === k;
+                return (
+                  <TouchableOpacity
+                    key={`picker-key-${k}`}
+                    style={[
+                      styles.keyChipCompact,
+                      isSelected && styles.keyChipSelected,
+                    ]}
+                    onPress={() => {
+                      if (activeKeyTarget === "new") {
+                        setNewKey(k);
+                      } else {
+                        setEditKey(k);
+                      }
+                      setIsKeyPickerVisible(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.keyChipTextCompact,
+                        isSelected && styles.keyChipTextSelected,
+                      ]}
+                    >
+                      {k}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TouchableOpacity
+              style={styles.smallBackButton}
+              onPress={() => setIsKeyPickerVisible(false)}
+            >
+              <Text style={styles.smallBackButtonText}>Volver</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -208,49 +681,61 @@ export default function RepertoireScreen() {
 
 const styles = StyleSheet.create({
   container: { flexGrow: 1, backgroundColor: "#121212", padding: 20 },
+  toastContainer: {
+    backgroundColor: "#1e1e1e",
+    borderWidth: 1,
+    borderColor: "#00bcd4",
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 15,
+    alignSelf: "center",
+    width: "100%",
+  },
+  toastText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "bold",
+  },
   headerTitle: {
     fontSize: 22,
     fontWeight: "bold",
     color: "#fff",
-    marginBottom: 15,
   },
   primaryButton: {
-    backgroundColor: "#e91e63",
-    padding: 12,
+    backgroundColor: "#00bcd4",
+    padding: 14,
     borderRadius: 8,
     alignItems: "center",
     marginBottom: 15,
   },
-  primaryButtonText: { color: "#fff", fontWeight: "bold", fontSize: 13 },
+  primaryButtonText: { color: "#000", fontWeight: "bold", fontSize: 16 },
   subHeader: {
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: "bold",
     color: "#fff",
     marginBottom: 10,
     marginTop: 10,
   },
-  emptyText: { color: "#666", fontStyle: "italic", fontSize: 13 },
+  emptyText: { color: "#666", fontStyle: "italic", fontSize: 16 },
   songCard: {
     backgroundColor: "#1e1e1e",
-    padding: 12,
+    padding: 16,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "#333",
-    marginBottom: 8,
+    marginBottom: 10,
+    borderLeftWidth: 4,
+    borderLeftColor: "#00bcd4",
   },
   songTitle: {
     color: "#fff",
     fontWeight: "bold",
-    fontSize: 14,
-    marginBottom: 2,
+    fontSize: 18,
+    marginBottom: 6,
   },
-  songMeta: { color: "#aaa", fontSize: 11 },
-  songLyrics: {
-    color: "#888",
-    fontSize: 11,
-    marginTop: 4,
-    fontStyle: "italic",
-  },
+  songMeta: { color: "#aaa", fontSize: 15 },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.8)",
@@ -260,32 +745,122 @@ const styles = StyleSheet.create({
   modalContent: {
     backgroundColor: "#1e1e1e",
     borderRadius: 12,
-    padding: 16,
+    padding: 20,
     maxHeight: "85%",
+    borderWidth: 1,
+    borderColor: "#00bcd4",
   },
   modalTitle: {
-    fontSize: 16,
+    fontSize: 21,
     fontWeight: "bold",
-    color: "#e91e63",
-    marginBottom: 10,
+    color: "#00bcd4",
   },
-  label: { fontSize: 11, color: "#aaa", marginBottom: 4 },
+  label: { fontSize: 16, color: "#aaa", marginBottom: 6, marginTop: 6 },
   input: {
     backgroundColor: "#121212",
     borderWidth: 1,
     borderColor: "#333",
     borderRadius: 8,
-    padding: 8,
+    padding: 12,
     color: "#fff",
-    fontSize: 12,
-    marginBottom: 8,
+    fontSize: 16,
+    marginBottom: 10,
   },
-  modalCloseButton: {
-    backgroundColor: "#333",
-    padding: 10,
+  pickerButton: {
+    backgroundColor: "#121212",
+    borderWidth: 1,
+    borderColor: "#333",
+    borderRadius: 8,
+    padding: 14,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  pickerButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  keysGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+  },
+  keysGridCompact: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    marginTop: 6,
+  },
+  keyChipCompact: {
+    width: "22%",
+    backgroundColor: "#121212",
+    paddingVertical: 10,
+    marginBottom: 8,
+    alignItems: "center",
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#333",
+  },
+  keyChipTextCompact: {
+    color: "#aaa",
+    fontWeight: "bold",
+    fontSize: 15,
+  },
+  genreChip: {
+    width: "48%",
+    backgroundColor: "#121212",
+    paddingVertical: 14,
+    marginBottom: 10,
+    alignItems: "center",
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#333",
+  },
+  keyChipSelected: {
+    backgroundColor: "#00bcd4",
+    borderColor: "#00bcd4",
+  },
+  keyChipText: {
+    color: "#aaa",
+    fontWeight: "bold",
+    fontSize: 18,
+  },
+  keyChipTextSelected: {
+    color: "#000",
+  },
+  smallBackButton: {
+    backgroundColor: "#ff9800",
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    alignSelf: "center",
+    marginTop: 8,
+  },
+  smallBackButtonText: { color: "#000", fontWeight: "bold", fontSize: 14 },
+  modalCloseButtonOrange: {
+    backgroundColor: "#ff9800",
+    padding: 14,
     borderRadius: 6,
     alignItems: "center",
-    marginTop: 10,
+    marginTop: 6,
   },
-  modalCloseButtonText: { color: "#fff", fontWeight: "bold", fontSize: 12 },
+  modalCloseButtonOrangeText: {
+    color: "#000",
+    fontWeight: "bold",
+    fontSize: 16,
+  },
+  modalCloseButtonDanger: {
+    backgroundColor: "#c0392b",
+    padding: 14,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 6,
+  },
+  modalCloseButtonText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
+  iconButtonAction: {
+    padding: 4,
+  },
 });

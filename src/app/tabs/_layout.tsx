@@ -60,7 +60,8 @@ export default function TabLayout() {
           paddingBottom: 30,
           paddingTop: 3,
         },
-        tabBarActiveTintColor: "#e91e63",
+        // Color activo cambiado a azul turquesa en lugar de rojo
+        tabBarActiveTintColor: "#00bcd4",
         tabBarInactiveTintColor: "#888",
         tabBarLabelStyle: {
           fontSize: 11,
@@ -78,8 +79,8 @@ export default function TabLayout() {
             pathname: "/tabs/band-info",
             params: { bandId, userId },
           },
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="musical-notes" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="musical-notes" size={36} color={color} />
           ),
         }}
       />
@@ -91,8 +92,8 @@ export default function TabLayout() {
             pathname: "/tabs/calendar",
             params: { bandId, userId },
           },
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="calendar" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="calendar" size={36} color={color} />
           ),
         }}
       />
@@ -104,8 +105,8 @@ export default function TabLayout() {
             pathname: "/tabs/repertory",
             params: { bandId, userId },
           },
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="mic" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="mic" size={36} color={color} />
           ),
         }}
       />
@@ -117,8 +118,8 @@ export default function TabLayout() {
             pathname: "/tabs/members",
             params: { bandId, userId },
           },
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="people" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="people" size={36} color={color} />
           ),
         }}
       />
