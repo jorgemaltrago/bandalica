@@ -38,10 +38,26 @@ export default function CalendarScreen() {
 
   // Listas de datos desde Supabase
   const [bandSongs, setBandSongs] = useState<any[]>([]);
-  const [selectedSongs, setSelectedSongs] = useState<string[]>([]);
+  const [selectedSongs, setSelectedSongs] = useState<string[]>([]); // <--- CORREGIDO AQUÍ
   const [eventsList, setEventsList] = useState<any[]>([]);
 
   const [isSongModalVisible, setIsSongModalVisible] = useState(false);
+
+  // ESTADOS PARA MODALES INTERACTIVOS DE DETALLE Y EDICIÓN DE ESCALETA
+  const [selectedEventDetails, setSelectedEventDetails] = useState<any | null>(
+    null,
+  );
+  const [isEventDetailsModalVisible, setIsEventDetailsModalVisible] =
+    useState(false);
+
+  const [selectedSongDetail, setSelectedSongDetail] = useState<any | null>(
+    null,
+  );
+  const [isSongDetailModalVisible, setIsSongDetailModalVisible] =
+    useState(false);
+
+  // Modal secundario para añadir canciones a un evento YA existente
+  const [isEditSongModalVisible, setIsEditSongModalVisible] = useState(false);
 
   const monthNames = [
     "Enero",
@@ -79,28 +95,16 @@ export default function CalendarScreen() {
     try {
       setLoading(true);
 
-      // 1. Obtener repertorio de la banda (relación band_songs -> songs)
+      // 1. Obtener repertorio de la banda directamente de la tabla 'songs'
       const { data: repertoryData, error: repError } = await supabase
-        .from("band_songs")
-        .select(
-          `
-          songs (
-            id,
-            title,
-            genre,
-            key,
-            tempo,
-            lyrics
-          )
-        `,
-        )
+        .from("songs")
+        .select("id, title, genre, key, tempo, lyrics")
         .eq("band_id", bandId);
 
       if (!repError && repertoryData) {
-        const formattedSongs = repertoryData
-          .map((item: any) => item.songs)
-          .filter(Boolean);
-        setBandSongs(formattedSongs);
+        setBandSongs(repertoryData);
+      } else if (repError) {
+        console.error("Error al cargar canciones:", repError.message);
       }
 
       // 2. Obtener eventos de la banda y sus canciones asociadas (events -> event_songs -> songs)
@@ -174,7 +178,6 @@ export default function CalendarScreen() {
       const formattedDayStr = String(selectedDay).padStart(2, "0");
       const dateStringDB = `${year}-${formattedMonth}-${formattedDayStr}`;
 
-      // Insertar en la tabla 'events' (incluyendo opcionalmente el user creador si tu esquema lo soporta)
       const { data: newEventData, error: eventError } = await supabase
         .from("events")
         .insert([
@@ -192,7 +195,6 @@ export default function CalendarScreen() {
 
       if (eventError) throw eventError;
 
-      // Insertar la escaleta en la tabla intermedia 'event_songs'
       if (selectedSongs.length > 0 && newEventData) {
         const eventSongsPayload = selectedSongs.map((songId, index) => ({
           event_id: newEventData.id,
@@ -229,12 +231,73 @@ export default function CalendarScreen() {
             .eq("id", eventId);
           if (!error) {
             setEventsList(eventsList.filter((ev) => ev.id !== eventId));
+            setIsEventDetailsModalVisible(false);
           } else {
             Alert.alert("Error", "No se pudo eliminar el evento.");
           }
         },
       },
     ]);
+  };
+
+  const handleAddSongToExistingEvent = async (songId: string) => {
+    if (!selectedEventDetails) return;
+    try {
+      const nextPosition = selectedEventDetails.songsOrderedList.length + 1;
+      const { error } = await supabase.from("event_songs").insert([
+        {
+          event_id: selectedEventDetails.id,
+          song_id: songId,
+          position: nextPosition,
+        },
+      ]);
+
+      if (error) throw error;
+
+      await loadCalendarData();
+
+      const addedSongObj = bandSongs.find((s) => s.id === songId);
+      if (addedSongObj) {
+        const updatedList = [
+          ...selectedEventDetails.songsOrderedList,
+          addedSongObj,
+        ];
+        setSelectedEventDetails({
+          ...selectedEventDetails,
+          songsOrderedList: updatedList,
+          songsCount: updatedList.length,
+        });
+      }
+      setIsEditSongModalVisible(false);
+    } catch (error: any) {
+      Alert.alert("Error", "No se pudo añadir la canción al evento.");
+    }
+  };
+
+  const handleRemoveSongFromExistingEvent = async (songId: string) => {
+    if (!selectedEventDetails) return;
+    try {
+      const { error } = await supabase
+        .from("event_songs")
+        .delete()
+        .eq("event_id", selectedEventDetails.id)
+        .eq("song_id", songId);
+
+      if (error) throw error;
+
+      await loadCalendarData();
+
+      const updatedList = selectedEventDetails.songsOrderedList.filter(
+        (s: any) => s.id !== songId,
+      );
+      setSelectedEventDetails({
+        ...selectedEventDetails,
+        songsOrderedList: updatedList,
+        songsCount: updatedList.length,
+      });
+    } catch (error: any) {
+      Alert.alert("Error", "No se pudo quitar la canción del evento.");
+    }
   };
 
   const getDaysInMonth = (y: number, m: number) =>
@@ -364,20 +427,33 @@ export default function CalendarScreen() {
             📌 Eventos para el {selectedDay} de {monthNames[month]}
           </Text>
 
+          {/* LISTA DE EVENTOS CLICABLES */}
           {dayEvents.map((ev) => (
-            <View key={ev.id} style={styles.miniEventBadge}>
+            <TouchableOpacity
+              key={ev.id}
+              style={styles.miniEventBadge}
+              onPress={() => {
+                setSelectedEventDetails(ev);
+                setIsEventDetailsModalVisible(true);
+              }}
+            >
               <View style={styles.eventHeaderRow}>
                 <Text style={styles.miniEventName}>
                   🎸 {ev.name} ({ev.type})
                 </Text>
-                <TouchableOpacity onPress={() => handleDeleteEvent(ev.id)}>
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    handleDeleteEvent(ev.id);
+                  }}
+                >
                   <Text>🗑️</Text>
                 </TouchableOpacity>
               </View>
               <Text style={styles.miniEventTime}>
-                🕒 {ev.time} | 🎵 {ev.songsCount} canciones
+                🕒 {ev.time} | 🎵 {ev.songsCount} canciones (Toca para ver)
               </Text>
-            </View>
+            </TouchableOpacity>
           ))}
 
           <Text style={styles.subSectionTitle}>Añadir Actividad:</Text>
@@ -463,7 +539,7 @@ export default function CalendarScreen() {
         </View>
       )}
 
-      {/* MODAL DE SELECCIÓN DE CANCIONES */}
+      {/* MODAL DE SELECCIÓN DE CANCIONES (CREACIÓN NUEVA) */}
       <Modal visible={isSongModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -506,6 +582,200 @@ export default function CalendarScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* MODAL 1: DETALLES DEL EVENTO Y SU ESCALETA EDITABLE */}
+      <Modal
+        visible={isEventDetailsModalVisible}
+        transparent
+        animationType="slide"
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>
+              🎸 {selectedEventDetails?.name}
+            </Text>
+            <Text style={styles.modalSubTitleLarge}>
+              🕒 {selectedEventDetails?.time} | 🎵{" "}
+              {selectedEventDetails?.songsCount || 0} canciones
+            </Text>
+            <Text style={styles.modalDateInfo}>
+              {selectedEventDetails?.dateString}
+            </Text>
+
+            <View style={styles.repertoireSectionHeader}>
+              <Text style={styles.subSectionTitle}>Escaleta de Canciones:</Text>
+              <TouchableOpacity
+                style={styles.addSongButton}
+                onPress={() => setIsEditSongModalVisible(true)}
+              >
+                <Text style={styles.addSongButtonText}>+ Añadir Canción</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalScrollList}>
+              {selectedEventDetails?.songsOrderedList?.length === 0 ? (
+                <Text style={styles.emptyText}>
+                  Este evento no tiene canciones asociadas.
+                </Text>
+              ) : (
+                selectedEventDetails?.songsOrderedList?.map(
+                  (song: any, index: number) => (
+                    <View key={song.id || index} style={styles.editSongRow}>
+                      <TouchableOpacity
+                        style={{ flex: 1 }}
+                        onPress={() => {
+                          setSelectedSongDetail(song);
+                          setIsSongDetailModalVisible(true);
+                        }}
+                      >
+                        <Text style={styles.modalSongTitle}>
+                          {index + 1}. {song.title}
+                        </Text>
+                        <Text style={styles.modalSongMetaLarge}>
+                          Tono: {song.key || "N/A"} | Género:{" "}
+                          {song.genre || "N/A"}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.removeSongButton}
+                        onPress={() =>
+                          handleRemoveSongFromExistingEvent(song.id)
+                        }
+                      >
+                        <Text style={{ fontSize: 16 }}>❌</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ),
+                )
+              )}
+            </ScrollView>
+
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                marginTop: 10,
+              }}
+            >
+              <TouchableOpacity
+                style={[
+                  styles.modalCloseButton,
+                  { backgroundColor: "#c0392b", flex: 1, marginRight: 6 },
+                ]}
+                onPress={() => handleDeleteEvent(selectedEventDetails?.id)}
+              >
+                <Text style={styles.modalCloseButtonText}>Eliminar Evento</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalCloseButton, { flex: 1, marginLeft: 6 }]}
+                onPress={() => setIsEventDetailsModalVisible(false)}
+              >
+                <Text style={styles.modalCloseButtonText}>Cerrar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL SECUNDARIO: AÑADIR CANCIÓN A EVENTO YA EXISTENTE */}
+      <Modal visible={isEditSongModalVisible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>➕ Añadir Canción al Evento</Text>
+            <ScrollView style={styles.modalScrollList}>
+              {bandSongs.length === 0 ? (
+                <Text style={styles.emptyText}>
+                  No hay canciones en el repertorio de la banda.
+                </Text>
+              ) : (
+                bandSongs.map((song) => {
+                  const alreadyInEvent =
+                    selectedEventDetails?.songsOrderedList?.some(
+                      (s: any) => s.id === song.id,
+                    );
+                  return (
+                    <TouchableOpacity
+                      key={song.id}
+                      style={[
+                        styles.modalSongItem,
+                        alreadyInEvent && styles.modalSongItemDisabled,
+                      ]}
+                      onPress={() =>
+                        !alreadyInEvent && handleAddSongToExistingEvent(song.id)
+                      }
+                      disabled={alreadyInEvent}
+                    >
+                      <Text style={styles.modalSongTitle}>
+                        {song.title} {alreadyInEvent ? "✅ (Ya añadida)" : ""}
+                      </Text>
+                      <Text style={styles.modalSongMetaLarge}>
+                        {song.genre} | {song.key}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setIsEditSongModalVisible(false)}
+            >
+              <Text style={styles.modalCloseButtonText}>Volver</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL 2: CARACTERÍSTICAS DE LA CANCIÓN SELECCIONADA */}
+      <Modal
+        visible={isSongDetailModalVisible}
+        transparent
+        animationType="fade"
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>
+              🎵 {selectedSongDetail?.title}
+            </Text>
+
+            <View style={styles.songDetailContainer}>
+              <Text style={styles.songDetailText}>
+                ⭐ <Text style={styles.boldText}>Género:</Text>{" "}
+                {selectedSongDetail?.genre || "No especificado"}
+              </Text>
+              <Text style={styles.songDetailText}>
+                🎹 <Text style={styles.boldText}>Tono (Key):</Text>{" "}
+                {selectedSongDetail?.key || "No especificado"}
+              </Text>
+              <Text style={styles.songDetailText}>
+                ⏱️ <Text style={styles.boldText}>Tempo:</Text>{" "}
+                {selectedSongDetail?.tempo
+                  ? `${selectedSongDetail.tempo} BPM`
+                  : "No especificado"}
+              </Text>
+
+              <Text style={[styles.subSectionTitle, { marginTop: 15 }]}>
+                Letra / Notas:
+              </Text>
+              <ScrollView style={styles.lyricsScroll}>
+                <Text style={styles.lyricsText}>
+                  {selectedSongDetail?.lyrics ||
+                    "Sin letra o notas registradas."}
+                </Text>
+              </ScrollView>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.modalCloseButton, { marginTop: 15 }]}
+              onPress={() => setIsSongDetailModalVisible(false)}
+            >
+              <Text style={styles.modalCloseButtonText}>Volver al Evento</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -513,7 +783,7 @@ export default function CalendarScreen() {
 const styles = StyleSheet.create({
   container: { flexGrow: 1, backgroundColor: "#121212", padding: 20 },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "bold",
     color: "#fff",
     marginBottom: 15,
@@ -521,10 +791,12 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: "#1e1e1e",
     borderRadius: 12,
-    padding: 12,
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 6,
     borderWidth: 1,
     borderColor: "#333",
-    marginBottom: 15,
+    marginBottom: 10,
   },
   calendarNavHeader: {
     flexDirection: "row",
@@ -534,7 +806,7 @@ const styles = StyleSheet.create({
   },
   navButton: { backgroundColor: "#2a2a2a", padding: 6, borderRadius: 6 },
   navButtonText: { color: "#fff" },
-  calendarMonthTitle: { fontSize: 16, fontWeight: "bold", color: "#fff" },
+  calendarMonthTitle: { fontSize: 17, fontWeight: "bold", color: "#fff" },
   weekDaysHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-around",
@@ -546,10 +818,14 @@ const styles = StyleSheet.create({
     width: "14%",
     textAlign: "center",
   },
-  daysGrid: { flexDirection: "row", flexWrap: "wrap" },
+  daysGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginBottom: -6,
+  },
   dayCell: {
     width: "14%",
-    aspectRatio: 1.25,
+    aspectRatio: 1.0,
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "#121212",
@@ -558,22 +834,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#2a2a2a",
   },
-  dayCellEmpty: { width: "14%", aspectRatio: 1.25 },
+  dayCellEmpty: { width: "14%", aspectRatio: 1.0 },
   cellEnsayo: { borderColor: "#2ecc71", backgroundColor: "#1b3a2b" },
   cellActuacion: { borderColor: "#3498db", backgroundColor: "#1a334c" },
   cellOtro: { borderColor: "#e67e22", backgroundColor: "#422813" },
   todayCellHighlight: { borderWidth: 2, borderColor: "#fff" },
   dayCellSelected: { backgroundColor: "#e91e63" },
-  dayText: { color: "#ccc", fontSize: 12 },
+  dayText: { color: "#ccc", fontSize: 13 },
   dayTextSelected: { color: "#fff", fontWeight: "bold" },
   cardTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "bold",
     color: "#e91e63",
     marginBottom: 10,
   },
   subSectionTitle: {
-    fontSize: 12,
+    fontSize: 14,
     color: "#bbb",
     fontWeight: "bold",
     marginBottom: 6,
@@ -584,9 +860,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#333",
     borderRadius: 8,
-    padding: 10,
+    padding: 12,
     color: "#fff",
-    fontSize: 13,
+    fontSize: 14,
     marginBottom: 10,
   },
   typeSelectorRow: {
@@ -597,7 +873,7 @@ const styles = StyleSheet.create({
   typeButton: {
     flex: 1,
     backgroundColor: "#121212",
-    padding: 8,
+    padding: 10,
     alignItems: "center",
     borderWidth: 1,
     borderColor: "#333",
@@ -605,44 +881,45 @@ const styles = StyleSheet.create({
     marginHorizontal: 2,
   },
   typeButtonActive: { backgroundColor: "#e91e63", borderColor: "#e91e63" },
-  typeButtonText: { color: "#aaa", fontSize: 12 },
+  typeButtonText: { color: "#aaa", fontSize: 13 },
   typeButtonTextActive: { color: "#fff", fontWeight: "bold" },
   repertoireSectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 6,
+    marginTop: 8,
   },
   addSongButton: {
     backgroundColor: "#e91e63",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
   },
-  addSongButtonText: { color: "#fff", fontSize: 11, fontWeight: "bold" },
+  addSongButtonText: { color: "#fff", fontSize: 12, fontWeight: "bold" },
   reorderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     backgroundColor: "#121212",
-    padding: 8,
+    padding: 10,
     borderRadius: 6,
-    marginBottom: 4,
+    marginBottom: 6,
   },
-  reorderSongText: { color: "#fff", fontSize: 12 },
+  reorderSongText: { color: "#fff", fontSize: 14, fontWeight: "600" },
   rowActionsRight: {
     flexDirection: "row",
-    width: 60,
+    width: 70,
     justifyContent: "space-between",
   },
   primaryButton: {
     backgroundColor: "#e91e63",
-    padding: 12,
+    padding: 14,
     borderRadius: 8,
     alignItems: "center",
     marginTop: 10,
   },
-  primaryButtonText: { color: "#fff", fontWeight: "bold", fontSize: 13 },
+  primaryButtonText: { color: "#fff", fontWeight: "bold", fontSize: 14 },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.8)",
@@ -652,50 +929,112 @@ const styles = StyleSheet.create({
   modalContent: {
     backgroundColor: "#1e1e1e",
     borderRadius: 12,
-    padding: 16,
-    maxHeight: "70%",
+    padding: 18,
+    maxHeight: "78%",
   },
   modalTitle: {
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: "bold",
     color: "#e91e63",
+    marginBottom: 8,
+  },
+  modalSubTitleLarge: {
+    fontSize: 15,
+    color: "#fff",
+    fontWeight: "bold",
+    marginBottom: 4,
+  },
+  modalDateInfo: {
+    fontSize: 13,
+    color: "#aaa",
     marginBottom: 10,
   },
   modalScrollList: { marginBottom: 10 },
   modalSongItem: {
     backgroundColor: "#121212",
-    padding: 10,
+    padding: 12,
     borderRadius: 6,
-    marginBottom: 6,
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: "#2a2a2a",
   },
   modalSongItemDisabled: { opacity: 0.4 },
-  modalSongTitle: { color: "#fff", fontWeight: "bold", fontSize: 13 },
-  modalSongMeta: { color: "#888", fontSize: 11 },
+  modalSongTitle: { color: "#fff", fontWeight: "bold", fontSize: 16 },
+  modalSongMeta: { color: "#aaa", fontSize: 13, marginTop: 3 },
+  modalSongMetaLarge: { color: "#bbb", fontSize: 14, marginTop: 3 },
   modalCloseButton: {
     backgroundColor: "#333",
-    padding: 10,
+    padding: 12,
     borderRadius: 6,
     alignItems: "center",
   },
-  modalCloseButtonText: { color: "#fff", fontWeight: "bold" },
+  modalCloseButtonText: { color: "#fff", fontWeight: "bold", fontSize: 14 },
   miniEventBadge: {
     backgroundColor: "#121212",
-    padding: 8,
+    padding: 12,
     borderRadius: 6,
-    marginBottom: 6,
-    borderLeftWidth: 3,
+    marginBottom: 8,
+    borderLeftWidth: 4,
     borderLeftColor: "#e91e63",
   },
-  eventHeaderRow: { flexDirection: "row", justifyContent: "space-between" },
-  miniEventName: { color: "#fff", fontWeight: "bold", fontSize: 13 },
-  miniEventTime: { color: "#999", fontSize: 11, marginTop: 2 },
+  eventHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  miniEventName: { color: "#fff", fontWeight: "bold", fontSize: 16 },
+  miniEventTime: {
+    color: "#ddd",
+    fontSize: 14,
+    fontWeight: "600",
+    marginTop: 4,
+  },
   emptyText: {
-    color: "#666",
+    color: "#777",
     textAlign: "center",
     fontStyle: "italic",
-    padding: 10,
+    padding: 12,
+    fontSize: 14,
   },
-  label: { fontSize: 12, color: "#ccc", fontWeight: "600" },
+  label: { fontSize: 14, color: "#ccc", fontWeight: "600" },
+  songDetailContainer: {
+    marginVertical: 5,
+  },
+  songDetailText: {
+    color: "#ddd",
+    fontSize: 15,
+    marginBottom: 8,
+  },
+  boldText: {
+    fontWeight: "bold",
+    color: "#fff",
+  },
+  lyricsScroll: {
+    backgroundColor: "#121212",
+    padding: 12,
+    borderRadius: 6,
+    maxHeight: 220,
+    borderWidth: 1,
+    borderColor: "#2a2a2a",
+  },
+  lyricsText: {
+    color: "#ccc",
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  editSongRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#121212",
+    padding: 12,
+    borderRadius: 6,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: "#2a2a2a",
+  },
+  removeSongButton: {
+    padding: 6,
+    justifyContent: "center",
+    alignItems: "center",
+  },
 });

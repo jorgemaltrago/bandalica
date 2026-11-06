@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 12,
     color: "#fff",
-    fontSize: 14,
+    fontSize: 16,
   },
   eyeButton: {
     paddingHorizontal: 14,
@@ -219,7 +219,7 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     color: "#fff",
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "bold",
   },
   registerLinkContainer: {
@@ -228,7 +228,7 @@ const styles = StyleSheet.create({
   },
   registerLinkText: {
     color: "#aaa",
-    fontSize: 13,
+    fontSize: 15,
   },
   registerLinkHighlight: {
     color: "#e91e63",
@@ -239,7 +239,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   authorText: {
-    fontSize: 13,
+    fontSize: 15,
     color: "#b0b0b0",
     textAlign: "center",
     lineHeight: 18,
