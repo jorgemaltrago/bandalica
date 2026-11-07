@@ -1,5 +1,5 @@
 import { supabase } from "@/services/supabase";
-import { Ionicons } from "@expo/vector-icons"; // 👈 1. Importado para el icono del ojito
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -13,19 +13,16 @@ import {
   View,
 } from "react-native";
 
-// Importamos tu logotipo oficial desde la carpeta assets
 import LogoImg from "../assets/logo.png";
 
 export default function WelcomeScreen() {
   const router = useRouter();
 
-  // Estados para el inicio de sesión directo
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false); // 👈 2. Estado para mostrar/ocultar la contraseña
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Función para iniciar sesión directamente
   const handleLogin = async () => {
     if (!email.trim() || !password) {
       Alert.alert(
@@ -44,7 +41,6 @@ export default function WelcomeScreen() {
 
       if (error) throw error;
 
-      // 💡 3. Si el login es exitoso, redirigimos al dashboard del usuario
       router.push("/dashboard" as any);
     } catch (error: any) {
       Alert.alert(
@@ -57,8 +53,7 @@ export default function WelcomeScreen() {
   };
 
   const handleGoToRegister = () => {
-    // Te lleva al flujo completo de registro de perfil
-    router.push("/onboarding/profile");
+    router.push("/onboarding/profile" as any);
   };
 
   return (
@@ -83,7 +78,6 @@ export default function WelcomeScreen() {
           onChangeText={setEmail}
         />
 
-        {/* 👁️ Campo de contraseña con el botón del ojito integrado */}
         <View style={styles.passwordContainer}>
           <TextInput
             style={styles.passwordInput}
@@ -99,7 +93,7 @@ export default function WelcomeScreen() {
           >
             <Ionicons
               name={showPassword ? "eye-off" : "eye"}
-              size={20}
+              size={24}
               color="#888"
             />
           </TouchableOpacity>
@@ -115,7 +109,6 @@ export default function WelcomeScreen() {
           </Text>
         </TouchableOpacity>
 
-        {/* Enlace para registrarse si no tiene cuenta */}
         <TouchableOpacity
           style={styles.registerLinkContainer}
           onPress={handleGoToRegister}
@@ -152,30 +145,30 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   logo: {
-    width: 150,
-    height: 150,
+    width: 140,
+    height: 140,
     marginBottom: 10,
   },
   appSubtitle: {
-    fontSize: 16,
-    color: "#e91e63",
+    fontSize: 22, // 50% más grande (aprox de 15 a 22.5)
+    color: "#00bcd4", // Color turquesa solicitado para Gestiona tu banda
     fontWeight: "600",
     textAlign: "center",
-    letterSpacing: 0.5,
+    letterSpacing: 1,
   },
   card: {
     width: "100%",
     backgroundColor: "#1e1e1e",
     borderRadius: 14,
     padding: 20,
-    borderWidth: 1,
-    borderColor: "#333",
-    marginBottom: 30,
+    borderWidth: 1.5,
+    borderColor: "#fff", // Borde del recuadro cambiado a blanco
+    marginBottom: 24,
   },
   cardTitle: {
-    fontSize: 18,
+    fontSize: 27, // 50% más grande (de 18 a 27)
     fontWeight: "bold",
-    color: "#fff",
+    color: "#ff9800",
     marginBottom: 16,
     textAlign: "center",
   },
@@ -184,12 +177,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#333",
     borderRadius: 8,
-    padding: 12,
+    padding: 14,
     color: "#fff",
-    fontSize: 14,
+    fontSize: 22, // Tipografía del input un 50% más grande (de 14/15 a 22)
     marginBottom: 14,
   },
-  // 👁️ Nuevos estilos para el contenedor del input de contraseña + el ojito
   passwordContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -201,9 +193,9 @@ const styles = StyleSheet.create({
   },
   passwordInput: {
     flex: 1,
-    padding: 12,
+    padding: 14,
     color: "#fff",
-    fontSize: 16,
+    fontSize: 22, // Tipografía del input un 50% más grande (de 15 a 22.5)
   },
   eyeButton: {
     paddingHorizontal: 14,
@@ -211,15 +203,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   primaryButton: {
-    backgroundColor: "#e91e63",
+    backgroundColor: "#ff9800",
     paddingVertical: 14,
     borderRadius: 8,
     alignItems: "center",
     marginBottom: 14,
   },
   primaryButtonText: {
-    color: "#fff",
-    fontSize: 16,
+    color: "#000",
+    fontSize: 24, // 50% más grande (de 16 a 24)
     fontWeight: "bold",
   },
   registerLinkContainer: {
@@ -228,10 +220,10 @@ const styles = StyleSheet.create({
   },
   registerLinkText: {
     color: "#aaa",
-    fontSize: 15,
+    fontSize: 21, // 50% más grande (de 14 a 21)
   },
   registerLinkHighlight: {
-    color: "#e91e63",
+    color: "#00bcd4",
     fontWeight: "bold",
   },
   creditsSection: {
@@ -239,9 +231,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   authorText: {
-    fontSize: 15,
-    color: "#b0b0b0",
+    fontSize: 20, // 50% más grande (de 13 a 19.5 -> 20)
+    color: "#777",
     textAlign: "center",
-    lineHeight: 18,
+    lineHeight: 26,
   },
 });

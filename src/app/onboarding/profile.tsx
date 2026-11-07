@@ -1,10 +1,11 @@
 import { supabase } from "@/services/supabase";
-import { Ionicons } from "@expo/vector-icons"; // 👈 1. Importante para el icono del ojito
+import { Ionicons } from "@expo/vector-icons";
+import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
-  Alert,
+  ActivityIndicator,
   Image,
   ScrollView,
   StyleSheet,
@@ -17,99 +18,110 @@ import {
 export default function ProfileScreen() {
   const router = useRouter();
 
-  // Estados del perfil
-  const [fullName, setFullName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Datos del formulario de registro y perfil
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false); // 👈 2. Estado para mostrar/ocultar contraseña
-  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [fullName, setFullName] = useState("");
   const [instrument, setInstrument] = useState("");
-  const [phone, setPhone] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [bio, setBio] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState("");
 
-  // Función para seleccionar la imagen del teléfono
-  const handlePickImage = async () => {
-    const permissionResult =
-      await ImagePicker.requestMediaLibraryPermissionsAsync();
+  // Estado para el mensaje flotante (Toast)
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-    if (!permissionResult.granted) {
-      Alert.alert(
-        "Permiso denegado",
-        "Necesitamos acceso a tus fotos para subir un avatar.",
-      );
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      setAvatarUri(result.assets[0].uri);
-    }
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 2500);
   };
 
-  // Función para subir la imagen a Supabase Storage
-  const uploadAvatarToSupabase = async (
-    uri: string,
-    userId: string,
-  ): Promise<string | null> => {
+  // Subida opcional de Avatar usando FileSystem Legacy
+  const handlePickAndUploadAvatar = async () => {
     try {
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      const fileExt = uri.split(".").pop() || "jpg";
-      const fileName = `${userId}-${Date.now()}.${fileExt}`;
-      const filePath = `avatars/${fileName}`;
+      const permissionResult =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permissionResult.granted) {
+        showToast("Se necesitan permisos para acceder a la galería");
+        return;
+      }
+
+      const pickerResult = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (
+        pickerResult.canceled ||
+        !pickerResult.assets ||
+        pickerResult.assets.length === 0
+      ) {
+        return;
+      }
+
+      setUploadingImage(true);
+      const imageUri = pickerResult.assets[0].uri;
+
+      const fileExt = imageUri.split(".").pop()?.toLowerCase() || "jpg";
+      const fileName = `avatar_${Date.now()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const base64Data = await FileSystem.readAsStringAsync(imageUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      const byteCharacters = atob(base64Data);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
 
       const { error: uploadError } = await supabase.storage
         .from("avatars")
-        .upload(filePath, blob, { upsert: true });
+        .upload(filePath, byteArray, {
+          contentType: `image/${fileExt}`,
+          upsert: true,
+        });
 
-      if (uploadError) {
-        console.error("Error en upload de Supabase:", uploadError);
-        return null;
-      }
+      if (uploadError) throw uploadError;
 
-      const { data } = supabase.storage.from("avatars").getPublicUrl(filePath);
-      return data.publicUrl;
-    } catch (error) {
-      console.error("Error procesando la imagen:", error);
-      return null;
+      const { data: publicData } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(filePath);
+
+      const newAvatarUrl = publicData.publicUrl;
+      setAvatarUrl(`${newAvatarUrl}?t=${Date.now()}`);
+      showToast("¡Avatar subido con éxito!");
+    } catch (error: any) {
+      console.error("Error en la subida del avatar:", error);
+      showToast("Error al subir la imagen.");
+    } finally {
+      setUploadingImage(false);
     }
   };
 
-  const handleRegisterUser = async () => {
+  const handleRegisterAndSaveProfile = async () => {
+    // Validaciones obligatorias
+    if (!email.trim() || !password) {
+      showToast("El correo y la contraseña son obligatorios");
+      return;
+    }
     if (!fullName.trim()) {
-      Alert.alert(
-        "Campo obligatorio",
-        "Por favor, introduce tu nombre y apellido.",
-      );
+      showToast("El nombre completo es obligatorio");
       return;
     }
-
-    if (!email.trim() || !email.includes("@")) {
-      Alert.alert(
-        "Correo obligatorio",
-        "Por favor, introduce un correo electrónico válido.",
-      );
-      return;
-    }
-
-    if (!password || password.length < 6) {
-      Alert.alert(
-        "Contraseña obligatoria",
-        "La contraseña debe tener al menos 6 caracteres.",
-      );
-      return;
-    }
-
-    setLoading(true);
 
     try {
-      // 1. Registrar al usuario en Supabase Auth
+      setLoading(true);
+
+      // 1. Crear usuario en Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: email.trim(),
         password: password,
@@ -117,52 +129,28 @@ export default function ProfileScreen() {
 
       if (authError) throw authError;
 
-      const userId = authData.user?.id;
+      const user = authData.user;
+      if (!user) throw new Error("No se pudo crear el usuario.");
 
-      if (userId) {
-        let publicAvatarUrl = "";
+      // 2. Guardar los datos en la tabla profiles incluyendo el email
+      const { error: profileError } = await supabase.from("profiles").upsert({
+        id: user.id,
+        email: email.trim(),
+        full_name: fullName.trim(),
+        instrument: instrument.trim() || null,
+        bio: bio.trim() || null,
+        avatar_url: avatarUrl ? avatarUrl.split("?")[0] : null,
+      });
 
-        // 2. Si el usuario eligió un avatar, intentamos subirlo
-        if (avatarUri) {
-          const uploadedUrl = await uploadAvatarToSupabase(avatarUri, userId);
-          if (uploadedUrl) {
-            publicAvatarUrl = uploadedUrl;
-          }
-        }
+      if (profileError) throw profileError;
 
-        // 3. Guardar los datos en la tabla public.profiles
-        const { error: profileError } = await supabase.from("profiles").insert([
-          {
-            id: userId,
-            email: email.trim(),
-            full_name: fullName.trim(),
-            instrument: instrument.trim() || "Sin especificar",
-            phone: phone.trim() || "",
-            avatar_url: publicAvatarUrl,
-          },
-        ]);
-
-        if (profileError) throw profileError;
-      }
-
-      // 💡 4. Redirección limpia al Index (pantalla de inicio/login)
-      Alert.alert(
-        "¡Cuenta creada con éxito!",
-        "Por favor, inicia sesión con tu correo y contraseña para continuar.",
-        [
-          {
-            text: "Entrar",
-            onPress: () => {
-              router.replace("/" as any); // Esto te manda directo al index
-            },
-          },
-        ],
-      );
+      showToast("¡Registro completado con éxito!");
+      setTimeout(() => {
+        router.push("/dashboard" as any);
+      }, 1000);
     } catch (error: any) {
-      Alert.alert(
-        "Error en el registro",
-        error.message || "Ocurrió un error inesperado.",
-      );
+      console.error("Error en el registro:", error);
+      showToast(error.message || "No se pudo completar el registro");
     } finally {
       setLoading(false);
     }
@@ -170,58 +158,63 @@ export default function ProfileScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>👤 Perfil del Músico</Text>
-        <Text style={styles.cardHint}>
-          Introduce tus datos. La foto de perfil es opcional y podrás añadirla o
-          cambiarla más adelante:
-        </Text>
+      {toastMessage && (
+        <View style={styles.toastContainer}>
+          <Ionicons
+            name="checkmark-circle"
+            size={20}
+            color="#00bcd4"
+            style={{ marginRight: 8 }}
+          />
+          <Text style={styles.toastText}>{toastMessage}</Text>
+        </View>
+      )}
 
-        {/* Selector de Avatar */}
-        <View style={styles.avatarContainer}>
+      <View style={styles.cardHeader}>
+        <Text style={styles.cardTitle}>👤 Registro de Cuenta</Text>
+
+        <View style={{ alignItems: "center", marginBottom: 20 }}>
           <TouchableOpacity
-            style={styles.avatarPicker}
-            onPress={handlePickImage}
+            style={styles.logoContainerModal}
+            onPress={handlePickAndUploadAvatar}
+            disabled={uploadingImage}
           >
-            {avatarUri ? (
-              <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+            {uploadingImage ? (
+              <ActivityIndicator size="small" color="#00bcd4" />
+            ) : avatarUrl ? (
+              <Image source={{ uri: avatarUrl }} style={styles.logoImg} />
             ) : (
-              <Text style={styles.avatarPlaceholderText}>📷 + Foto</Text>
+              <Text style={styles.logoFallback}>🎸</Text>
             )}
+            <View style={styles.editBadge}>
+              <Ionicons name="camera" size={16} color="#000" />
+            </View>
           </TouchableOpacity>
-          <Text style={styles.avatarLabel}>Foto de perfil (Opcional)</Text>
+          <Text style={styles.tipText}>
+            Toca para añadir tu foto (opcional)
+          </Text>
         </View>
 
-        <Text style={styles.label}>Nombre y Apellido *</Text>
+        <Text style={styles.label}>Correo electrónico *:</Text>
         <TextInput
           style={styles.input}
-          placeholder="Ej: Juan Pérez"
-          placeholderTextColor="#666"
-          value={fullName}
-          onChangeText={setFullName}
-        />
-
-        <Text style={styles.label}>Correo Electrónico *</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Ej: juan@email.com"
+          value={email}
+          onChangeText={setEmail}
+          placeholder="tucorreo@email.com"
           placeholderTextColor="#666"
           keyboardType="email-address"
           autoCapitalize="none"
-          value={email}
-          onChangeText={setEmail}
         />
 
-        {/* 👁️ Campo de Contraseña con el Botón del Ojito */}
-        <Text style={styles.label}>Contraseña * (Mín. 6 caracteres)</Text>
+        <Text style={styles.label}>Contraseña *:</Text>
         <View style={styles.passwordContainer}>
           <TextInput
             style={styles.passwordInput}
-            placeholder="••••••••"
-            placeholderTextColor="#666"
-            secureTextEntry={!showPassword}
             value={password}
             onChangeText={setPassword}
+            placeholder="Mínimo 6 caracteres"
+            placeholderTextColor="#666"
+            secureTextEntry={!showPassword}
           />
           <TouchableOpacity
             style={styles.eyeButton}
@@ -235,32 +228,41 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.label}>Instrumento / Voz (Opcional)</Text>
+        <Text style={styles.label}>Nombre completo *:</Text>
         <TextInput
           style={styles.input}
-          placeholder="Ej: Guitarra Solista / Vocalista"
+          value={fullName}
+          onChangeText={setFullName}
+          placeholder="Tu nombre y apellidos"
           placeholderTextColor="#666"
-          value={instrument}
-          onChangeText={setInstrument}
         />
 
-        <Text style={styles.label}>Teléfono de Contacto (Opcional)</Text>
+        <Text style={styles.label}>Instrumento principal (opcional):</Text>
         <TextInput
           style={styles.input}
-          placeholder="Ej: +34 600 000 000"
+          value={instrument}
+          onChangeText={setInstrument}
+          placeholder="Ej. Guitarra, Batería..."
           placeholderTextColor="#666"
-          keyboardType="phone-pad"
-          value={phone}
-          onChangeText={setPhone}
+        />
+
+        <Text style={styles.label}>Biografía (opcional):</Text>
+        <TextInput
+          style={[styles.input, { height: 90, textAlignVertical: "top" }]}
+          value={bio}
+          onChangeText={setBio}
+          placeholder="Cuéntanos algo sobre ti..."
+          placeholderTextColor="#666"
+          multiline
         />
 
         <TouchableOpacity
-          style={[styles.primaryButton, loading && { opacity: 0.7 }]}
-          onPress={handleRegisterUser}
+          style={[styles.modalCloseButtonSave, loading && { opacity: 0.7 }]}
+          onPress={handleRegisterAndSaveProfile}
           disabled={loading}
         >
-          <Text style={styles.primaryButtonText}>
-            {loading ? "Registrando perfil..." : "Crear Cuenta"}
+          <Text style={styles.modalCloseButtonSaveText}>
+            {loading ? "Registrando..." : "Completar Registro"}
           </Text>
         </TouchableOpacity>
       </View>
@@ -272,62 +274,78 @@ const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
     backgroundColor: "#121212",
-    padding: 24,
+    padding: 20,
     justifyContent: "center",
   },
-  card: {
+  toastContainer: {
+    backgroundColor: "#1e1e1e",
+    borderWidth: 1,
+    borderColor: "#00bcd4",
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 15,
+    alignSelf: "center",
+    width: "100%",
+  },
+  toastText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  cardHeader: {
     backgroundColor: "#1e1e1e",
     borderRadius: 14,
     padding: 20,
-    borderWidth: 1,
-    borderColor: "#333",
+    borderWidth: 1.5,
+    borderColor: "#fff",
   },
   cardTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "bold",
-    color: "#e91e63",
-    marginBottom: 6,
-  },
-  cardHint: {
-    fontSize: 13,
-    color: "#888",
+    color: "#ff9800",
     marginBottom: 20,
-    lineHeight: 18,
+    textAlign: "center",
   },
-  avatarContainer: {
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  avatarPicker: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
+  logoContainerModal: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     backgroundColor: "#121212",
-    borderWidth: 1,
-    borderColor: "#333",
+    borderWidth: 2,
+    borderColor: "#00bcd4",
     justifyContent: "center",
     alignItems: "center",
     overflow: "hidden",
-    marginBottom: 6,
+    position: "relative",
   },
-  avatarImage: {
+  logoImg: {
     width: "100%",
     height: "100%",
+    resizeMode: "cover",
   },
-  avatarPlaceholderText: {
-    color: "#888",
-    fontSize: 12,
-    fontWeight: "600",
-    textAlign: "center",
+  logoFallback: {
+    fontSize: 40,
   },
-  avatarLabel: {
-    fontSize: 12,
+  editBadge: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    backgroundColor: "#00bcd4",
+    padding: 6,
+    borderTopLeftRadius: 10,
+  },
+  tipText: {
     color: "#aaa",
+    fontSize: 13,
+    marginTop: 6,
   },
   label: {
-    fontSize: 13,
+    fontSize: 15,
     color: "#ccc",
     marginBottom: 6,
+    marginTop: 10,
     fontWeight: "600",
   },
   input: {
@@ -337,10 +355,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     color: "#fff",
-    fontSize: 14,
-    marginBottom: 14,
+    fontSize: 16,
+    marginBottom: 10,
   },
-  // 👁️ Estilos específicos para el contenedor de la contraseña con el ojito
   passwordContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -348,29 +365,29 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#333",
     borderRadius: 8,
-    marginBottom: 14,
+    marginBottom: 10,
   },
   passwordInput: {
     flex: 1,
     padding: 12,
     color: "#fff",
-    fontSize: 14,
+    fontSize: 16,
   },
   eyeButton: {
     paddingHorizontal: 14,
     justifyContent: "center",
     alignItems: "center",
   },
-  primaryButton: {
-    backgroundColor: "#e91e63",
-    paddingVertical: 14,
+  modalCloseButtonSave: {
+    backgroundColor: "#ff9800",
+    padding: 14,
     borderRadius: 8,
     alignItems: "center",
-    marginTop: 10,
+    marginTop: 16,
   },
-  primaryButtonText: {
-    color: "#fff",
-    fontSize: 15,
+  modalCloseButtonSaveText: {
+    color: "#000",
     fontWeight: "bold",
+    fontSize: 16,
   },
 });
