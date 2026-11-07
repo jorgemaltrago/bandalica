@@ -3,7 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 import { Platform } from "react-native";
 
 const SUPABASE_URL = "https://urwtnfzgsdmpazcregyo.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_6xHOvL93w0yviK6pNDPOw_ZWHg88fh";
+const SUPABASE_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVyd3RuZnpnc2RtcGF6Y3JlZ3lvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM4OTc2MTQsImV4cCI6MjEwOTQ3MzYxNH0.ptmDqISRQZpxuOr4cze12TACJbmQxdsbSrAnxGPgRbs";
 
 // Creamos un almacenamiento simulado (dummy) seguro para cuando se ejecuta en el servidor de compilación (SSR/Node)
 const DummyStorage = {
