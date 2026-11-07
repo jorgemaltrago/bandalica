@@ -1,4 +1,3 @@
-import { supabase } from "@/services/supabase";
 import { Ionicons } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
@@ -83,6 +82,9 @@ export default function ProfileScreen() {
       }
       const byteArray = new Uint8Array(byteNumbers);
 
+      // Importación dinámica de Supabase para evitar el bloqueo en la nube
+      const { supabase } = await import("@/services/supabase");
+
       const { error: uploadError } = await supabase.storage
         .from("avatars")
         .upload(filePath, byteArray, {
@@ -120,6 +122,9 @@ export default function ProfileScreen() {
 
     try {
       setLoading(true);
+
+      // Importación dinámica de Supabase para el registro
+      const { supabase } = await import("@/services/supabase");
 
       // 1. Crear usuario en Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({

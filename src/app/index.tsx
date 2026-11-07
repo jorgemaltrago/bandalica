@@ -1,10 +1,10 @@
-import { supabase } from "@/services/supabase";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   Alert,
   Image,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -25,13 +25,17 @@ export default function WelcomeScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Comprobar si ya hay una sesión activa guardada al abrir la app
+  // Comprobar si ya hay una sesión activa de forma segura (dinámica)
   useEffect(() => {
-    checkActiveSession();
+    if (Platform.OS !== "web") {
+      checkActiveSession();
+    }
   }, []);
 
   const checkActiveSession = async () => {
     try {
+      // Importamos dinámicamente Supabase solo cuando el componente corre en el dispositivo
+      const { supabase } = await import("@/services/supabase");
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -55,6 +59,7 @@ export default function WelcomeScreen() {
 
     setLoading(true);
     try {
+      const { supabase } = await import("@/services/supabase");
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password: password,
@@ -62,7 +67,7 @@ export default function WelcomeScreen() {
 
       if (error) throw error;
 
-      if (data.user.email === ADMIN_EMAIL) {
+      if (data.user?.email === ADMIN_EMAIL) {
         Alert.alert(
           "¡Bienvenido, Administrador!",
           "Entrando a tu panel de control.",
@@ -91,6 +96,7 @@ export default function WelcomeScreen() {
     }
 
     try {
+      const { supabase } = await import("@/services/supabase");
       const { error } = await supabase
         .from("password_requests")
         .insert([{ email: email.trim(), status: "pending" }]);
