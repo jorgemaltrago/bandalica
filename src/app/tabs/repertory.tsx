@@ -41,21 +41,26 @@ export default function RepertoireScreen() {
     }, 2500);
   };
 
-  // Lista de 12 notas musicales en inglés
-  const musicalKeys = [
-    "C",
-    "C#",
-    "D",
-    "D#",
-    "E",
-    "F",
-    "F#",
-    "G",
-    "G#",
-    "A",
-    "A#",
-    "B",
+  // Mapeo de notas en inglés a español para mostrar y guardar
+  const musicalKeysMap = [
+    { label: "Do", value: "C" },
+    { label: "Do#", value: "C#" },
+    { label: "Re", value: "D" },
+    { label: "Re#", value: "D#" },
+    { label: "Mi", value: "E" },
+    { label: "Fa", value: "F" },
+    { label: "Fa#", value: "F#" },
+    { label: "Sol", value: "G" },
+    { label: "Sol#", value: "G#" },
+    { label: "La", value: "A" },
+    { label: "La#", value: "A#" },
+    { label: "Si", value: "B" },
   ];
+
+  const getKeyLabel = (val: string) => {
+    const found = musicalKeysMap.find((k) => k.value === val);
+    return found ? found.label : val || "Do";
+  };
 
   // Lista de géneros preestablecidos con Flamenco incluido
   const musicGenres = [
@@ -147,7 +152,6 @@ export default function RepertoireScreen() {
       setIsAddModalVisible(false);
       loadRepertoire();
 
-      // Mensaje flotante elegante en vez de alerta blanca
       showToast("Canción añadida correctamente");
     } catch (error: any) {
       Alert.alert("Error al registrar", error.message);
@@ -180,7 +184,6 @@ export default function RepertoireScreen() {
       setIsEditModalVisible(false);
       loadRepertoire();
 
-      // Mensaje flotante elegante
       showToast("Cambios actualizados correctamente");
     } catch (error: any) {
       Alert.alert("Error", "No se pudo actualizar la canción.");
@@ -295,7 +298,8 @@ export default function RepertoireScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.songTitle}>{song.title}</Text>
                 <Text style={styles.songMeta}>
-                  Tonalidad: {song.key || "N/D"} | Tempo: {song.tempo || "N/D"}
+                  Tonalidad: {getKeyLabel(song.key)} | Tempo:{" "}
+                  {song.tempo || "N/D"}
                 </Text>
               </View>
 
@@ -376,7 +380,7 @@ export default function RepertoireScreen() {
                 }}
               >
                 <Text style={styles.pickerButtonText}>
-                  Nota seleccionada: {newKey}
+                  Nota seleccionada: {getKeyLabel(newKey)}
                 </Text>
                 <Ionicons name="chevron-down" size={20} color="#00bcd4" />
               </TouchableOpacity>
@@ -399,37 +403,40 @@ export default function RepertoireScreen() {
                 value={newLyrics}
                 onChangeText={setNewLyrics}
               />
-
-              <TouchableOpacity
-                style={styles.primaryButton}
-                onPress={handleCreateAndAddSong}
-              >
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Ionicons
-                    name="save-outline"
-                    size={22}
-                    color="#000"
-                    style={{ marginRight: 8 }}
-                  />
-                  <Text style={styles.primaryButtonText}>
-                    Guardar Canción en la Banda
-                  </Text>
-                </View>
-              </TouchableOpacity>
             </ScrollView>
 
-            <TouchableOpacity
-              style={styles.modalCloseButtonOrange}
-              onPress={() => setIsAddModalVisible(false)}
-            >
-              <Text style={styles.modalCloseButtonOrangeText}>Cancelar</Text>
-            </TouchableOpacity>
+            {/* BOTONERA INFERIOR (AÑADIR TEMA): GUARDAR (TURQUESA) Y CANCELAR (NARANJA) */}
+            <View style={styles.buttonRowContainer}>
+              <TouchableOpacity
+                style={styles.actionBtnSave}
+                onPress={handleCreateAndAddSong}
+              >
+                <View style={styles.btnContentWithIcon}>
+                  <Ionicons
+                    name="save-outline"
+                    size={18}
+                    color="#000"
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={styles.actionBtnTextDark}>Guardar</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.actionBtnCancel}
+                onPress={() => setIsAddModalVisible(false)}
+              >
+                <View style={styles.btnContentWithIcon}>
+                  <Ionicons
+                    name="close-circle-outline"
+                    size={18}
+                    color="#000"
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={styles.actionBtnTextDark}>Cancelar</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -487,7 +494,7 @@ export default function RepertoireScreen() {
                 }}
               >
                 <Text style={styles.pickerButtonText}>
-                  Nota seleccionada: {editKey}
+                  Nota seleccionada: {getKeyLabel(editKey)}
                 </Text>
                 <Ionicons name="chevron-down" size={20} color="#00bcd4" />
               </TouchableOpacity>
@@ -512,58 +519,55 @@ export default function RepertoireScreen() {
                 value={editLyrics}
                 onChangeText={setEditLyrics}
               />
-
-              <TouchableOpacity
-                style={styles.primaryButton}
-                onPress={handleUpdateSong}
-              >
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Ionicons
-                    name="save-outline"
-                    size={22}
-                    color="#000"
-                    style={{ marginRight: 8 }}
-                  />
-                  <Text style={styles.primaryButtonText}>
-                    Actualizar Cambios
-                  </Text>
-                </View>
-              </TouchableOpacity>
             </ScrollView>
 
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                marginTop: 10,
-              }}
-            >
+            {/* BOTONERA INFERIOR (EDITAR): GUARDAR (TURQUESA), ELIMINAR (NARANJA), VOLVER (BLANCO) */}
+            <View style={styles.buttonRowContainer}>
               <TouchableOpacity
-                style={[
-                  styles.modalCloseButtonDanger,
-                  { flex: 1, marginRight: 6 },
-                ]}
+                style={styles.actionBtnSave}
+                onPress={handleUpdateSong}
+              >
+                <View style={styles.btnContentWithIcon}>
+                  <Ionicons
+                    name="save-outline"
+                    size={18}
+                    color="#000"
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={styles.actionBtnTextDark}>Guardar</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.actionBtnDelete}
                 onPress={() =>
                   selectedSong && handleDeleteSong(selectedSong.id)
                 }
               >
-                <Text style={styles.modalCloseButtonText}>Eliminar</Text>
+                <View style={styles.btnContentWithIcon}>
+                  <Ionicons
+                    name="trash-outline"
+                    size={18}
+                    color="#000"
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={styles.actionBtnTextDark}>Eliminar</Text>
+                </View>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[
-                  styles.modalCloseButtonOrange,
-                  { flex: 1, marginLeft: 6 },
-                ]}
+                style={styles.actionBtnClose}
                 onPress={() => setIsEditModalVisible(false)}
               >
-                <Text style={styles.modalCloseButtonOrangeText}>Cerrar</Text>
+                <View style={styles.btnContentWithIcon}>
+                  <Ionicons
+                    name="arrow-back-outline"
+                    size={18}
+                    color="#000"
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={styles.actionBtnTextDark}>Volver</Text>
+                </View>
               </TouchableOpacity>
             </View>
           </View>
@@ -623,7 +627,7 @@ export default function RepertoireScreen() {
         </View>
       </Modal>
 
-      {/* VENTANA FLOTANTE (SUB-MODAL) PARA SELECCIONAR LA TONALIDAD */}
+      {/* VENTANA FLOTANTE (SUB-MODAL) PARA SELECCIONAR LA TONALIDAD EN ESPAÑOL */}
       <Modal visible={isKeyPickerVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { paddingBottom: 16 }]}>
@@ -633,22 +637,22 @@ export default function RepertoireScreen() {
             </Text>
 
             <View style={styles.keysGridCompact}>
-              {musicalKeys.map((k) => {
+              {musicalKeysMap.map((item) => {
                 const currentSelected =
                   activeKeyTarget === "new" ? newKey : editKey;
-                const isSelected = currentSelected === k;
+                const isSelected = currentSelected === item.value;
                 return (
                   <TouchableOpacity
-                    key={`picker-key-${k}`}
+                    key={`picker-key-${item.value}`}
                     style={[
                       styles.keyChipCompact,
                       isSelected && styles.keyChipSelected,
                     ]}
                     onPress={() => {
                       if (activeKeyTarget === "new") {
-                        setNewKey(k);
+                        setNewKey(item.value);
                       } else {
-                        setEditKey(k);
+                        setEditKey(item.value);
                       }
                       setIsKeyPickerVisible(false);
                     }}
@@ -659,7 +663,7 @@ export default function RepertoireScreen() {
                         isSelected && styles.keyChipTextSelected,
                       ]}
                     >
-                      {k}
+                      {item.label}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -839,27 +843,50 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   smallBackButtonText: { color: "#000", fontWeight: "bold", fontSize: 14 },
-  modalCloseButtonOrange: {
-    backgroundColor: "#ff9800",
-    padding: 14,
-    borderRadius: 6,
-    alignItems: "center",
-    marginTop: 6,
+  buttonRowContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 14,
+    gap: 8,
   },
-  modalCloseButtonOrangeText: {
-    color: "#000",
-    fontWeight: "bold",
-    fontSize: 16,
-  },
-  modalCloseButtonDanger: {
-    backgroundColor: "#c0392b",
-    padding: 14,
-    borderRadius: 6,
+  btnContentWithIcon: {
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 6,
   },
-  modalCloseButtonText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
+  actionBtnSave: {
+    flex: 1,
+    backgroundColor: "#00bcd4", // Turquesa
+    paddingVertical: 12,
+    borderRadius: 6,
+    alignItems: "center",
+  },
+  actionBtnDelete: {
+    flex: 1,
+    backgroundColor: "#ff9800", // Naranja
+    paddingVertical: 12,
+    borderRadius: 6,
+    alignItems: "center",
+  },
+  actionBtnCancel: {
+    flex: 1,
+    backgroundColor: "#ff9800", // Naranja para cancelar en añadir
+    paddingVertical: 12,
+    borderRadius: 6,
+    alignItems: "center",
+  },
+  actionBtnClose: {
+    flex: 1,
+    backgroundColor: "#ffffff", // Blanco
+    paddingVertical: 12,
+    borderRadius: 6,
+    alignItems: "center",
+  },
+  actionBtnTextDark: {
+    color: "#000",
+    fontWeight: "bold",
+    fontSize: 14,
+  },
   iconButtonAction: {
     padding: 4,
   },

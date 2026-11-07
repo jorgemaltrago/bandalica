@@ -1,7 +1,7 @@
 import { supabase } from "@/services/supabase";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
   Image,
@@ -15,6 +15,8 @@ import {
 
 import LogoImg from "../assets/logo.png";
 
+const ADMIN_EMAIL = "jorgemaltrago@gmail.com";
+
 export default function WelcomeScreen() {
   const router = useRouter();
 
@@ -23,6 +25,25 @@ export default function WelcomeScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // Comprobar si ya hay una sesión activa guardada al abrir la app
+  useEffect(() => {
+    checkActiveSession();
+  }, []);
+
+  const checkActiveSession = async () => {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session) {
+        router.replace("/dashboard" as any);
+      }
+    } catch (error) {
+      console.log("Error al comprobar sesión activa:", error);
+    }
+  };
+
+  // Función de Iniciar Sesión
   const handleLogin = async () => {
     if (!email.trim() || !password) {
       Alert.alert(
@@ -34,14 +55,21 @@ export default function WelcomeScreen() {
 
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password: password,
       });
 
       if (error) throw error;
 
-      router.push("/dashboard" as any);
+      if (data.user.email === ADMIN_EMAIL) {
+        Alert.alert(
+          "¡Bienvenido, Administrador!",
+          "Entrando a tu panel de control.",
+        );
+      }
+
+      router.replace("/dashboard" as any);
     } catch (error: any) {
       Alert.alert(
         "Error de acceso",
@@ -52,19 +80,47 @@ export default function WelcomeScreen() {
     }
   };
 
+  // Función para que un usuario pida restablecer su contraseña
+  const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      Alert.alert(
+        "Correo requerido",
+        "Por favor, introduce tu correo electrónico en el campo de arriba para enviar la petición al administrador.",
+      );
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("password_requests")
+        .insert([{ email: email.trim(), status: "pending" }]);
+
+      if (error) throw error;
+
+      Alert.alert(
+        "Petición enviada",
+        "Se ha registrado tu solicitud. El administrador revisará la petición y te enviará una nueva contraseña.",
+      );
+    } catch (error: any) {
+      Alert.alert(
+        "Error",
+        error.message ||
+          "No se pudo registrar la petición de restablecimiento.",
+      );
+    }
+  };
+
   const handleGoToRegister = () => {
     router.push("/onboarding/profile" as any);
   };
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      {/* Sección del Logotipo Principal */}
       <View style={styles.logoSection}>
         <Image source={LogoImg} style={styles.logo} resizeMode="contain" />
         <Text style={styles.appSubtitle}>Gestiona tu banda</Text>
       </View>
 
-      {/* Formulario de Login Directo */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>🔑 Iniciar Sesión</Text>
 
@@ -93,7 +149,7 @@ export default function WelcomeScreen() {
           >
             <Ionicons
               name={showPassword ? "eye-off" : "eye"}
-              size={24}
+              size={17}
               color="#888"
             />
           </TouchableOpacity>
@@ -109,6 +165,16 @@ export default function WelcomeScreen() {
           </Text>
         </TouchableOpacity>
 
+        {/* Botón de solicitar recuperación al admin */}
+        <TouchableOpacity
+          style={styles.forgotPasswordContainer}
+          onPress={handleForgotPassword}
+        >
+          <Text style={styles.forgotPasswordText}>
+            ¿Has olvidado tu contraseña?
+          </Text>
+        </TouchableOpacity>
+
         <TouchableOpacity
           style={styles.registerLinkContainer}
           onPress={handleGoToRegister}
@@ -120,12 +186,11 @@ export default function WelcomeScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Créditos de Autoría y Copyright */}
       <View style={styles.creditsSection}>
         <Text style={styles.authorText}>
-          Aplicación realizada por Jorge Martín Cabello, copyright 2026. Todos
-          los derechos reservados.
+          Jorge Martín Cabello © 2026. Todos los derechos reservados.
         </Text>
+        <Text style={styles.testModeText}>Aplicación en modo pruebas</Text>
       </View>
     </ScrollView>
   );
@@ -135,23 +200,23 @@ const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
     backgroundColor: "#121212",
-    padding: 24,
+    padding: 20,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 40,
+    paddingVertical: 32,
   },
   logoSection: {
     alignItems: "center",
-    marginBottom: 20,
+    marginBottom: 12,
   },
   logo: {
-    width: 140,
-    height: 140,
-    marginBottom: 10,
+    width: 90,
+    height: 90,
+    marginBottom: 6,
   },
   appSubtitle: {
-    fontSize: 22, // 50% más grande (aprox de 15 a 22.5)
-    color: "#00bcd4", // Color turquesa solicitado para Gestiona tu banda
+    fontSize: 15,
+    color: "#00bcd4",
     fontWeight: "600",
     textAlign: "center",
     letterSpacing: 1,
@@ -159,17 +224,17 @@ const styles = StyleSheet.create({
   card: {
     width: "100%",
     backgroundColor: "#1e1e1e",
-    borderRadius: 14,
-    padding: 20,
+    borderRadius: 12,
+    padding: 16,
     borderWidth: 1.5,
-    borderColor: "#fff", // Borde del recuadro cambiado a blanco
-    marginBottom: 24,
+    borderColor: "#fff",
+    marginBottom: 16,
   },
   cardTitle: {
-    fontSize: 27, // 50% más grande (de 18 a 27)
+    fontSize: 19,
     fontWeight: "bold",
     color: "#ff9800",
-    marginBottom: 16,
+    marginBottom: 12,
     textAlign: "center",
   },
   input: {
@@ -177,10 +242,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#333",
     borderRadius: 8,
-    padding: 14,
+    padding: 10,
     color: "#fff",
-    fontSize: 22, // Tipografía del input un 50% más grande (de 14/15 a 22)
-    marginBottom: 14,
+    fontSize: 15,
+    marginBottom: 10,
   },
   passwordContainer: {
     flexDirection: "row",
@@ -189,38 +254,47 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#333",
     borderRadius: 8,
-    marginBottom: 14,
+    marginBottom: 10,
   },
   passwordInput: {
     flex: 1,
-    padding: 14,
+    padding: 10,
     color: "#fff",
-    fontSize: 22, // Tipografía del input un 50% más grande (de 15 a 22.5)
+    fontSize: 15,
   },
   eyeButton: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     justifyContent: "center",
     alignItems: "center",
   },
   primaryButton: {
     backgroundColor: "#ff9800",
-    paddingVertical: 14,
+    paddingVertical: 10,
     borderRadius: 8,
     alignItems: "center",
-    marginBottom: 14,
+    marginBottom: 10,
   },
   primaryButtonText: {
     color: "#000",
-    fontSize: 24, // 50% más grande (de 16 a 24)
+    fontSize: 17,
     fontWeight: "bold",
+  },
+  forgotPasswordContainer: {
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  forgotPasswordText: {
+    color: "#ff9800",
+    fontSize: 13.5,
+    textDecorationLine: "underline",
   },
   registerLinkContainer: {
     alignItems: "center",
-    marginTop: 6,
+    marginTop: 2,
   },
   registerLinkText: {
     color: "#aaa",
-    fontSize: 21, // 50% más grande (de 14 a 21)
+    fontSize: 14.5,
   },
   registerLinkHighlight: {
     color: "#00bcd4",
@@ -228,12 +302,19 @@ const styles = StyleSheet.create({
   },
   creditsSection: {
     alignItems: "center",
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
   },
   authorText: {
-    fontSize: 20, // 50% más grande (de 13 a 19.5 -> 20)
+    fontSize: 13,
     color: "#777",
     textAlign: "center",
-    lineHeight: 26,
+    lineHeight: 18,
+  },
+  testModeText: {
+    fontSize: 12,
+    color: "#00bcd4",
+    textAlign: "center",
+    marginTop: 4,
+    fontStyle: "italic",
   },
 });

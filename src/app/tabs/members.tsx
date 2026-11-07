@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -61,7 +62,9 @@ export default function MembersScreen() {
           profiles (
             id,
             full_name,
-            avatar_url
+            avatar_url,
+            instrument,
+            voice
           )
         `,
         )
@@ -75,6 +78,13 @@ export default function MembersScreen() {
           userId: m.user_id,
           name: m.profiles?.full_name || "Músico sin nombre",
           role: m.role || "Miembro",
+          instrumentInfo:
+            [m.profiles?.instrument, m.profiles?.voice]
+              .filter(Boolean)
+              .join(" / ") ||
+            m.role ||
+            "Músico",
+          avatarUrl: m.profiles?.avatar_url || null,
           // Identificamos visualmente si este miembro es el creador
           isCreator: m.user_id === creatorId,
         }));
@@ -154,7 +164,7 @@ export default function MembersScreen() {
           { justifyContent: "center", alignItems: "center" },
         ]}
       >
-        <ActivityIndicator size="large" color="#e91e63" />
+        <ActivityIndicator size="large" color="#00bcd4" />
         <Text style={{ color: "#aaa", marginTop: 10 }}>
           Cargando músicos...
         </Text>
@@ -164,6 +174,16 @@ export default function MembersScreen() {
 
   return (
     <View style={styles.container}>
+      <View style={styles.headerContainer}>
+        <Ionicons
+          name="people-outline"
+          size={22}
+          color="#00bcd4"
+          style={{ marginRight: 8 }}
+        />
+        <Text style={styles.headerTitle}>Miembros de la Banda</Text>
+      </View>
+
       {members.length === 0 ? (
         <Text style={styles.emptyText}>
           No hay miembros registrados en esta banda todavía.
@@ -173,34 +193,49 @@ export default function MembersScreen() {
           data={members}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => {
-            // Un miembro solo se puede borrar si:
-            // 1. El usuario actual es admin (o creador)
-            // 2. El elemento de la lista NO es el creador de la banda
             const canDelete = isUserAdmin && !item.isCreator;
 
             return (
               <View style={styles.memberCard}>
-                <View style={{ flex: 1 }}>
+                {/* AVATAR */}
+                {item.avatarUrl ? (
+                  <Image
+                    source={{ uri: item.avatarUrl }}
+                    style={styles.avatarImage}
+                  />
+                ) : (
+                  <View style={styles.avatarPlaceholder}>
+                    <Text style={{ fontSize: 18 }}>🎸</Text>
+                  </View>
+                )}
+
+                {/* INFORMACIÓN DEL MIEMBRO */}
+                <View style={{ flex: 1, marginRight: 8 }}>
                   <View style={styles.nameRow}>
-                    <Text style={styles.memberName}>{item.name}</Text>
+                    <Text style={styles.memberName} numberOfLines={1}>
+                      {item.name}
+                    </Text>
                     {item.isCreator && (
                       <View style={styles.creatorBadge}>
                         <Text style={styles.creatorBadgeText}>Creador</Text>
                       </View>
                     )}
                   </View>
-                  <Text style={styles.memberRole}>Rol: {item.role}</Text>
+                  <Text style={styles.memberRole} numberOfLines={1}>
+                    {item.instrumentInfo}
+                  </Text>
                 </View>
 
-                {/* Mostramos el botón de borrar solo si cumple las reglas de permisos */}
+                {/* BOTÓN DE ELIMINAR (SOLO ADMINS) */}
                 {canDelete && (
                   <TouchableOpacity
                     onPress={() =>
                       handleRemoveMember(item.id, item.name, item.isCreator)
                     }
                     style={styles.deleteButton}
+                    title="Dar de baja"
                   >
-                    <Ionicons name="trash-outline" size={20} color="#ff4444" />
+                    <Ionicons name="trash-outline" size={20} color="#ff5252" />
                   </TouchableOpacity>
                 )}
               </View>
@@ -214,37 +249,80 @@ export default function MembersScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#121212", padding: 16 },
+  headerContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
+    marginTop: 4,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#fff",
+  },
   memberCard: {
     backgroundColor: "#1e1e1e",
-    padding: 16,
-    borderRadius: 8,
+    padding: 14,
+    borderRadius: 12,
     marginBottom: 12,
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: "#333",
+  },
+  avatarImage: {
+    width: 45,
+    height: 45,
+    borderRadius: 22.5,
+    borderWidth: 1.5,
+    borderColor: "#00bcd4",
+    marginRight: 12,
+  },
+  avatarPlaceholder: {
+    width: 45,
+    height: 45,
+    borderRadius: 22.5,
+    backgroundColor: "#121212",
+    borderWidth: 1.5,
+    borderColor: "#00bcd4",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
   },
   nameRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 4,
+    marginBottom: 3,
   },
-  memberName: { color: "#fff", fontSize: 16, fontWeight: "bold" },
+  memberName: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "bold",
+    flexShrink: 1,
+  },
   creatorBadge: {
-    backgroundColor: "#e91e63",
-    paddingHorizontal: 6,
+    backgroundColor: "#00bcd4",
+    paddingHorizontal: 7,
     paddingVertical: 2,
-    borderRadius: 4,
+    borderRadius: 6,
     marginLeft: 8,
   },
-  creatorBadgeText: { color: "#fff", fontSize: 10, fontWeight: "bold" },
-  memberRole: { color: "#888", fontSize: 14 },
-  deleteButton: { padding: 8 },
+  creatorBadgeText: { color: "#000", fontSize: 10, fontWeight: "bold" },
+  memberRole: { color: "#00bcd4", fontSize: 13, fontWeight: "600" },
+  deleteButton: {
+    backgroundColor: "#121212",
+    padding: 9,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#ff5252",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   emptyText: {
     color: "#666",
     textAlign: "center",
     fontStyle: "italic",
-    marginTop: 20,
+    marginTop: 30,
+    fontSize: 15,
   },
 });

@@ -1,12 +1,12 @@
 import { supabase } from "@/services/supabase";
 import { Ionicons } from "@expo/vector-icons";
-import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Clipboard,
   Image,
   Modal,
   ScrollView,
@@ -18,26 +18,37 @@ import {
 } from "react-native";
 
 export default function BandInfoScreen() {
+  const router = useRouter();
   const params = useLocalSearchParams();
   const bandId = (params.bandId as string) || "";
+  const userId = (params.userId as string) || "";
 
   const [loading, setLoading] = useState(true);
+  const [bandInfo, setBandInfo] = useState<any>(null);
+  const [isCreator, setIsCreator] = useState(false);
+
+  // Estados para el Modal de Editar Banda
+  const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editGenre, setEditGenre] = useState("Rock");
+  const [editBio, setEditBio] = useState("");
+  const [editLogoUrl, setEditLogoUrl] = useState("");
   const [uploadingImage, setUploadingImage] = useState(false);
 
-  // Datos de la banda desde Supabase
-  const [name, setName] = useState("");
-  const [genre, setGenre] = useState("");
-  const [bio, setBio] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
-  const [logoUrl, setLogoUrl] = useState("");
+  // Estado para el Modal de Confirmación de Borrado de Banda
+  const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
 
-  // Estado para el Modal de Edición
-  const [isEditModalVisible, setIsEditModalVisible] = useState(false);
-
-  // Estados temporales para el formulario del modal
-  const [tempName, setTempName] = useState("");
-  const [tempGenre, setTempGenre] = useState("");
-  const [tempBio, setTempBio] = useState("");
+  // Selector flotante de género
+  const [isGenrePickerVisible, setIsGenrePickerVisible] = useState(false);
+  const musicGenres = [
+    "Blues",
+    "Pop",
+    "Rock",
+    "Heavy",
+    "Electrónica",
+    "Fusión",
+    "Flamenco",
+  ];
 
   // Estado para el mensaje flotante (Toast)
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -51,47 +62,57 @@ export default function BandInfoScreen() {
 
   useEffect(() => {
     if (bandId) {
-      fetchBandDetailsFromDB();
+      loadBandInfo();
+    } else {
+      setLoading(false);
     }
   }, [bandId]);
 
-  const fetchBandDetailsFromDB = async () => {
+  const loadBandInfo = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+
+      const activeUserId =
+        userId || (await supabase.auth.getUser()).data.user?.id || null;
+
+      if (!activeUserId) return;
+
+      const { data: bandData, error: bandError } = await supabase
         .from("bands")
-        .select("name, genre, bio, invite_code, logo_url")
+        .select("*")
         .eq("id", bandId)
         .single();
 
-      if (error) throw error;
+      if (bandError) throw bandError;
 
-      if (data) {
-        setName(data.name || "");
-        setGenre(data.genre || "");
-        setBio(data.bio || "");
-        setInviteCode(data.invite_code || "");
-        setLogoUrl(data.logo_url ? `${data.logo_url}?t=${Date.now()}` : "");
+      if (bandData) {
+        setBandInfo(bandData);
+        setEditName(bandData.name || "");
+        setEditGenre(bandData.genre || "Rock");
+        setEditBio(bandData.bio || "");
+        setEditLogoUrl(bandData.logo_url || "");
 
-        setTempName(data.name || "");
-        setTempGenre(data.genre || "");
-        setTempBio(data.bio || "");
+        if (bandData.created_by === activeUserId) {
+          setIsCreator(true);
+        } else {
+          setIsCreator(false);
+        }
       }
-    } catch (e) {
-      console.error("Error al obtener los detalles de la banda:", e);
-      showToast("No se pudieron cargar los datos");
+    } catch (error: any) {
+      console.error("Error al cargar la información de la banda:", error);
+      showToast("No se pudo cargar la información de la banda.");
     } finally {
       setLoading(false);
     }
   };
 
-  // Subida robusta usando FileSystem Legacy
-  const handlePickAndUploadImage = async () => {
+  // --- SUBIDA DE LOGOTIPO DE LA BANDA ---
+  const handlePickAndUploadLogo = async () => {
     try {
       const permissionResult =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permissionResult.granted) {
-        showToast("Se necesitan permisos para acceder a la galería");
+        showToast("Se necesitan permisos para acceder a la galería.");
         return;
       }
 
@@ -114,15 +135,12 @@ export default function BandInfoScreen() {
       const imageUri = pickerResult.assets[0].uri;
 
       const fileExt = imageUri.split(".").pop()?.toLowerCase() || "jpg";
-      const fileName = `band_${bandId}_${Date.now()}.${fileExt}`;
-      const filePath = `${fileName}`;
+      const fileName = `band_logo_${bandId}_${Date.now()}.${fileExt}`;
 
-      // Leer la imagen en formato Base64 usando el módulo legacy
       const base64Data = await FileSystem.readAsStringAsync(imageUri, {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      // Convertir Base64 a ArrayBuffer/Uint8Array para Supabase
       const byteCharacters = atob(base64Data);
       const byteNumbers = new Array(byteCharacters.length);
       for (let i = 0; i < byteCharacters.length; i++) {
@@ -131,74 +149,90 @@ export default function BandInfoScreen() {
       const byteArray = new Uint8Array(byteNumbers);
 
       const { error: uploadError } = await supabase.storage
-        .from("band-logos")
-        .upload(filePath, byteArray, {
+        .from("avatars")
+        .upload(fileName, byteArray, {
           contentType: `image/${fileExt}`,
           upsert: true,
         });
 
-      if (uploadError) {
-        console.error("Error en Supabase Storage:", uploadError);
-        throw uploadError;
-      }
+      if (uploadError) throw uploadError;
 
       const { data: publicData } = supabase.storage
-        .from("band-logos")
-        .getPublicUrl(filePath);
+        .from("avatars")
+        .getPublicUrl(fileName);
 
-      const newLogoUrl = publicData.publicUrl;
-
-      // Actualizar la URL en la base de datos
-      const { error: updateError } = await supabase
-        .from("bands")
-        .update({ logo_url: newLogoUrl })
-        .eq("id", bandId);
-
-      if (updateError) throw updateError;
-
-      setLogoUrl(`${newLogoUrl}?t=${Date.now()}`);
-      showToast("¡Logotipo actualizado con éxito!");
+      setEditLogoUrl(publicData.publicUrl);
+      showToast("Imagen subida. Pulsa 'Guardar' para aplicar.");
     } catch (error: any) {
-      console.error("Error completo en la subida:", error);
-      showToast("Error al subir la imagen. Revisa la consola.");
+      console.error("Error al subir imagen:", error);
+      showToast("No se pudo subir la imagen.");
     } finally {
       setUploadingImage(false);
     }
   };
 
-  const handleSaveChanges = async () => {
-    if (!tempName.trim()) {
-      showToast("El nombre de la banda no puede estar vacío");
+  // --- ACTUALIZAR BANDA ---
+  const handleUpdateBand = async () => {
+    if (!editName.trim()) {
+      showToast("El nombre de la banda no puede estar vacío.");
       return;
     }
 
     try {
+      const updates = {
+        name: editName.trim(),
+        genre: editGenre || "Rock",
+        bio: editBio.trim() || null,
+        logo_url: editLogoUrl ? editLogoUrl.split("?")[0] : null,
+      };
+
       const { error } = await supabase
         .from("bands")
-        .update({
-          name: tempName.trim(),
-          genre: tempGenre.trim(),
-          bio: tempBio.trim(),
-        })
+        .update(updates)
         .eq("id", bandId);
 
       if (error) throw error;
 
-      setName(tempName.trim());
-      setGenre(tempGenre.trim());
-      setBio(tempBio.trim());
-
+      showToast("¡Información de la banda actualizada!");
       setIsEditModalVisible(false);
-      showToast("¡Datos actualizados correctamente!");
-    } catch (error) {
-      showToast("No se pudieron guardar los cambios");
+      loadBandInfo();
+    } catch (error: any) {
+      showToast(error.message || "Error al actualizar la banda.");
     }
   };
 
-  const handleCopyInviteCode = async () => {
-    if (!inviteCode) return;
-    await Clipboard.setStringAsync(inviteCode);
-    showToast("¡Código copiado al portapapeles!");
+  // --- ELIMINAR BANDA Y SUS DATOS ASSOCIADOS ---
+  const handleDeleteBand = async () => {
+    try {
+      // 1. Eliminar miembros de la banda
+      await supabase.from("band_members").delete().eq("band_id", bandId);
+
+      // 2. Eliminar canciones del repertorio de la banda
+      await supabase.from("songs").delete().eq("band_id", bandId);
+
+      // 3. Eliminar la banda de la tabla bands
+      const { error } = await supabase.from("bands").delete().eq("id", bandId);
+
+      if (error) throw error;
+
+      setIsDeleteModalVisible(false);
+      showToast("Banda eliminada correctamente");
+
+      // Redirigir al dashboard tras un breve instante
+      setTimeout(() => {
+        router.replace("/dashboard" as any);
+      }, 1500);
+    } catch (error: any) {
+      console.error("Error al eliminar la banda:", error);
+      showToast("No se pudo eliminar la banda.");
+    }
+  };
+
+  // --- FUNCIÓN PARA COPIAR USANDO EL TOAST FLOTANTE ---
+  const handleCopyCode = (code: string) => {
+    if (!code) return;
+    Clipboard.setString(code);
+    showToast(`¡Código "${code}" copiado al portapapeles!`);
   };
 
   if (loading) {
@@ -210,12 +244,16 @@ export default function BandInfoScreen() {
         ]}
       >
         <ActivityIndicator size="large" color="#00bcd4" />
+        <Text style={{ color: "#aaa", marginTop: 10 }}>
+          Cargando información de la banda...
+        </Text>
       </View>
     );
   }
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      {/* MENSAJE FLOTANTE (TOAST) */}
       {toastMessage && (
         <View style={styles.toastContainer}>
           <Ionicons
@@ -228,201 +266,328 @@ export default function BandInfoScreen() {
         </View>
       )}
 
-      {/* MÓDULO 1: RESUMEN DE LA BANDA */}
-      <View style={styles.cardHeader}>
-        <View style={styles.logoContainer}>
-          {logoUrl ? (
-            <Image source={{ uri: logoUrl }} style={styles.logoImg} />
-          ) : (
-            <Text style={styles.logoFallback}>🎸</Text>
-          )}
-        </View>
-
-        <Text style={styles.bandTitle}>{name}</Text>
-        <Text style={styles.bandGenre}>
-          Estilo / Género: {genre || "No especificado"}
-        </Text>
-
-        {bio ? (
-          <View style={styles.bioPreviewContainer}>
-            <Text style={styles.bioPreviewText} numberOfLines={3}>
-              {bio}
-            </Text>
-          </View>
-        ) : null}
-
-        <TouchableOpacity
-          style={styles.editButtonOrange}
-          onPress={() => {
-            setTempName(name);
-            setTempGenre(genre);
-            setTempBio(bio);
-            setIsEditModalVisible(true);
-          }}
-        >
+      <View style={styles.headerContainer}>
+        <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
           <Ionicons
-            name="create-outline"
-            size={18}
-            color="#000"
-            style={{ marginRight: 6 }}
-          />
-          <Text style={styles.editButtonText}>
-            Editar Información y Biografía
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* MÓDULO 2: CÓDIGO DE INVITACIÓN */}
-      <View style={styles.cardInvite}>
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            marginBottom: 10,
-          }}
-        >
-          <Ionicons
-            name="key-outline"
-            size={22}
+            name="radio-outline"
+            size={24}
             color="#00bcd4"
             style={{ marginRight: 8 }}
           />
-          <Text style={styles.sectionTitleTurquoise}>Código de Invitación</Text>
+          <Text style={styles.headerTitle}>Información de la Banda</Text>
         </View>
 
-        <TouchableOpacity
-          style={styles.codeTouchable}
-          onPress={handleCopyInviteCode}
-        >
-          <Text style={styles.codeText}>{inviteCode || "No disponible"}</Text>
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              marginTop: 4,
-            }}
-          >
-            <Ionicons
-              name="copy-outline"
-              size={16}
-              color="#00bcd4"
-              style={{ marginRight: 4 }}
-            />
-            <Text style={{ color: "#00bcd4", fontSize: 13, fontWeight: "600" }}>
-              Toca para copiar
-            </Text>
-          </View>
-        </TouchableOpacity>
+        {/* BOTONES DE ACCIÓN PARA EL CREADOR (EDITAR Y BORRAR BANDA) */}
+        {isCreator && (
+          <View style={{ flexDirection: "row" }}>
+            <TouchableOpacity
+              style={styles.editIconButton}
+              onPress={() => setIsEditModalVisible(true)}
+            >
+              <Ionicons name="create-outline" size={18} color="#00bcd4" />
+            </TouchableOpacity>
 
-        <Text style={styles.codeHint}>
-          Comparte este código con otros músicos para que puedan unirse a la
-          formación.
-        </Text>
+            <TouchableOpacity
+              style={[
+                styles.editIconButton,
+                { marginLeft: 8, borderColor: "#ff9800" },
+              ]}
+              onPress={() => setIsDeleteModalVisible(true)}
+            >
+              <Ionicons name="trash-outline" size={18} color="#ff9800" />
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
-      {/* MODAL DE EDICIÓN */}
+      {bandInfo ? (
+        <View style={styles.card}>
+          {/* LOGOTIPO DE LA BANDA */}
+          <View style={{ alignItems: "center", marginBottom: 20 }}>
+            {bandInfo.logo_url ? (
+              <Image
+                source={{ uri: bandInfo.logo_url }}
+                style={styles.bandLogoLarge}
+              />
+            ) : (
+              <View style={styles.bandLogoPlaceholder}>
+                <Ionicons name="musical-notes" size={40} color="#00bcd4" />
+              </View>
+            )}
+          </View>
+
+          <View style={styles.row}>
+            <Ionicons
+              name="musical-notes-outline"
+              size={20}
+              color="#00bcd4"
+              style={styles.icon}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>Nombre de la Banda</Text>
+              <Text style={styles.value}>{bandInfo.name}</Text>
+            </View>
+          </View>
+
+          <View style={styles.row}>
+            <Ionicons
+              name="disc-outline"
+              size={20}
+              color="#00bcd4"
+              style={styles.icon}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>Género Musical</Text>
+              <Text style={styles.value}>
+                {bandInfo.genre || "No especificado"}
+              </Text>
+            </View>
+          </View>
+
+          {bandInfo.bio ? (
+            <View style={styles.row}>
+              <Ionicons
+                name="document-text-outline"
+                size={20}
+                color="#00bcd4"
+                style={styles.icon}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.label}>Biografía</Text>
+                <Text style={styles.bioValue}>{bandInfo.bio}</Text>
+              </View>
+            </View>
+          ) : null}
+
+          {/* CÓDIGO DE INVITACIÓN COPIABLE (VISIBLE SOLO PARA EL CREADOR) */}
+          {isCreator && (
+            <TouchableOpacity
+              style={styles.codeContainer}
+              activeOpacity={0.7}
+              onPress={() => handleCopyCode(bandInfo.invite_code)}
+            >
+              <View style={styles.rowInvite}>
+                <Ionicons
+                  name="key-outline"
+                  size={20}
+                  color="#ff9800"
+                  style={styles.icon}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.codeLabel}>
+                    Código de Invitación (Toca para copiar)
+                  </Text>
+                  <Text style={styles.codeValue}>
+                    {bandInfo.invite_code || "No disponible"}
+                  </Text>
+                </View>
+                <Ionicons name="copy-outline" size={20} color="#ff9800" />
+              </View>
+              <Text style={styles.codeTip}>
+                Pulsa sobre esta tarjeta para copiar el código y compartirlo
+                fácilmente.
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      ) : (
+        <Text style={styles.emptyText}>
+          No se encontró información de esta banda.
+        </Text>
+      )}
+
+      {/* MODAL PARA EDITAR LA INFORMACIÓN DE LA BANDA */}
       <Modal visible={isEditModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                marginBottom: 12,
-              }}
-            >
-              <Ionicons
-                name="create-outline"
-                size={24}
-                color="#ff9800"
-                style={{ marginRight: 8 }}
-              />
-              <Text style={styles.modalTitle}>Editar Datos de la Banda</Text>
-            </View>
+          <ScrollView contentContainerStyle={{ paddingVertical: 20 }}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Editar Banda</Text>
 
-            <ScrollView style={{ maxHeight: 400 }}>
-              <View style={{ alignItems: "center", marginBottom: 14 }}>
+              {/* LOGO EDITABLE */}
+              <View style={{ alignItems: "center", marginBottom: 15 }}>
                 <TouchableOpacity
                   style={styles.logoContainerModal}
-                  onPress={handlePickAndUploadImage}
+                  onPress={handlePickAndUploadLogo}
                   disabled={uploadingImage}
                 >
                   {uploadingImage ? (
                     <ActivityIndicator size="small" color="#00bcd4" />
-                  ) : logoUrl ? (
-                    <Image source={{ uri: logoUrl }} style={styles.logoImg} />
+                  ) : editLogoUrl ? (
+                    <Image
+                      source={{ uri: editLogoUrl }}
+                      style={styles.logoImg}
+                    />
                   ) : (
-                    <Text style={styles.logoFallback}>🎸</Text>
+                    <Ionicons name="musical-notes" size={36} color="#00bcd4" />
                   )}
                   <View style={styles.editBadge}>
-                    <Ionicons name="camera" size={14} color="#000" />
+                    <Ionicons name="camera" size={16} color="#000" />
                   </View>
                 </TouchableOpacity>
-                <Text style={styles.tipText}>
-                  Toca para cambiar el logotipo
-                </Text>
+                <Text style={styles.tipText}>Toca para cambiar la imagen</Text>
               </View>
 
-              <Text style={styles.label}>Nombre de la banda:</Text>
+              <Text style={styles.inputLabel}>Nombre de la banda *:</Text>
               <TextInput
                 style={styles.input}
-                value={tempName}
-                onChangeText={setTempName}
                 placeholder="Nombre"
                 placeholderTextColor="#666"
+                value={editName}
+                onChangeText={setEditName}
               />
 
-              <Text style={styles.label}>Género musical:</Text>
-              <TextInput
-                style={styles.input}
-                value={tempGenre}
-                onChangeText={setTempGenre}
-                placeholder="Género"
-                placeholderTextColor="#666"
-              />
+              <Text style={styles.inputLabel}>Género musical:</Text>
+              <TouchableOpacity
+                style={styles.pickerButton}
+                onPress={() => setIsGenrePickerVisible(true)}
+              >
+                <Text style={styles.pickerButtonText}>Género: {editGenre}</Text>
+                <Ionicons name="chevron-down" size={20} color="#00bcd4" />
+              </TouchableOpacity>
 
-              <Text style={styles.label}>Biografía:</Text>
+              <Text style={styles.inputLabel}>Biografía:</Text>
               <TextInput
-                style={[
-                  styles.input,
-                  { height: 100, textAlignVertical: "top" },
-                ]}
-                value={tempBio}
-                onChangeText={setTempBio}
-                placeholder="Escribe la biografía..."
+                style={[styles.input, { height: 90, textAlignVertical: "top" }]}
+                placeholder="Biografía de la banda..."
                 placeholderTextColor="#666"
+                value={editBio}
+                onChangeText={setEditBio}
                 multiline
               />
-            </ScrollView>
 
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                marginTop: 14,
-              }}
-            >
+              <View style={styles.buttonRowContainer}>
+                <TouchableOpacity
+                  style={styles.actionBtnSave}
+                  onPress={handleUpdateBand}
+                >
+                  <View style={styles.btnContentWithIcon}>
+                    <Ionicons
+                      name="save-outline"
+                      size={18}
+                      color="#000"
+                      style={{ marginRight: 6 }}
+                    />
+                    <Text style={styles.actionBtnTextDark}>Guardar</Text>
+                  </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.actionBtnClose}
+                  onPress={() => setIsEditModalVisible(false)}
+                >
+                  <View style={styles.btnContentWithIcon}>
+                    <Ionicons
+                      name="arrow-back-outline"
+                      size={18}
+                      color="#000"
+                      style={{ marginRight: 6 }}
+                    />
+                    <Text style={styles.actionBtnTextDark}>Volver</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* VENTANA FLOTANTE DE CONFIRMACIÓN PARA EL BORRADO DE LA BANDA */}
+      <Modal visible={isDeleteModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { borderColor: "#ff9800" }]}>
+            <View style={{ alignItems: "center", marginBottom: 12 }}>
+              <Ionicons name="warning-outline" size={42} color="#ff9800" />
+            </View>
+            <Text style={[styles.modalTitle, { color: "#ff9800" }]}>
+              ¿Eliminar Banda?
+            </Text>
+            <Text style={styles.deleteWarningText}>
+              Estás a punto de borrar la banda{" "}
+              <Text style={{ fontWeight: "bold", color: "#fff" }}>
+                {bandInfo?.name}
+              </Text>
+              . Esta acción eliminará permanentemente todas sus canciones,
+              miembros y datos asociados del sistema.
+            </Text>
+
+            <View style={styles.buttonRowContainer}>
               <TouchableOpacity
-                style={[
-                  styles.modalCloseButtonOrange,
-                  { flex: 1, marginRight: 6, marginTop: 0 },
-                ]}
-                onPress={() => setIsEditModalVisible(false)}
+                style={styles.actionBtnDelete}
+                onPress={handleDeleteBand}
               >
-                <Text style={styles.modalCloseButtonOrangeText}>Volver</Text>
+                <View style={styles.btnContentWithIcon}>
+                  <Ionicons
+                    name="trash-outline"
+                    size={18}
+                    color="#000"
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={styles.actionBtnTextDark}>Borrar</Text>
+                </View>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[
-                  styles.modalCloseButtonSave,
-                  { flex: 1, marginLeft: 6, marginTop: 0 },
-                ]}
-                onPress={handleSaveChanges}
+                style={styles.actionBtnCloseWhite}
+                onPress={() => setIsDeleteModalVisible(false)}
               >
-                <Text style={styles.modalCloseButtonSaveText}>Guardar</Text>
+                <View style={styles.btnContentWithIcon}>
+                  <Ionicons
+                    name="arrow-back-outline"
+                    size={18}
+                    color="#000"
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={styles.actionBtnTextDark}>Cancelar</Text>
+                </View>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* VENTANA FLOTANTE (SUB-MODAL) PARA SELECCIONAR EL GÉNERO */}
+      <Modal visible={isGenrePickerVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: "55%" }]}>
+            <Text style={styles.modalTitle}>Seleccionar Género Musical</Text>
+            <Text style={[styles.inputLabel, { marginBottom: 12 }]}>
+              Elige un género:
+            </Text>
+
+            <ScrollView contentContainerStyle={styles.keysGrid}>
+              {musicGenres.map((g) => {
+                const isSelected = editGenre === g;
+                return (
+                  <TouchableOpacity
+                    key={`picker-genre-${g}`}
+                    style={[
+                      styles.genreChip,
+                      isSelected && styles.keyChipSelected,
+                    ]}
+                    onPress={() => {
+                      setEditGenre(g);
+                      setIsGenrePickerVisible(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.keyChipText,
+                        isSelected && styles.keyChipTextSelected,
+                      ]}
+                    >
+                      {g}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.smallBackButton}
+              onPress={() => setIsGenrePickerVisible(false)}
+            >
+              <Text style={styles.smallBackButtonText}>Volver</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -431,11 +596,7 @@ export default function BandInfoScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
-    backgroundColor: "#121212",
-    padding: 20,
-  },
+  container: { flexGrow: 1, backgroundColor: "#121212", padding: 20 },
   toastContainer: {
     backgroundColor: "#1e1e1e",
     borderWidth: 1,
@@ -450,43 +611,219 @@ const styles = StyleSheet.create({
   },
   toastText: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "bold",
   },
-  cardHeader: {
-    backgroundColor: "#1e1e1e",
-    borderRadius: 14,
-    padding: 20,
-    borderWidth: 1.5,
-    borderColor: "#ff9800",
-    marginBottom: 16,
+  headerContainer: {
+    flexDirection: "row",
     alignItems: "center",
+    marginBottom: 20,
+    marginTop: 10,
   },
-  cardInvite: {
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: "bold",
+    color: "#fff",
+  },
+  editIconButton: {
+    backgroundColor: "#121212",
+    padding: 7,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#00bcd4",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  card: {
     backgroundColor: "#1e1e1e",
-    borderRadius: 14,
+    borderRadius: 12,
     padding: 18,
     borderWidth: 1.5,
-    borderColor: "#00bcd4",
-    marginBottom: 16,
-    alignItems: "center",
+    borderColor: "#333",
   },
-  logoContainer: {
+  bandLogoLarge: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    borderWidth: 2,
+    borderColor: "#00bcd4",
+  },
+  bandLogoPlaceholder: {
     width: 90,
     height: 90,
     borderRadius: 45,
     backgroundColor: "#121212",
     borderWidth: 2,
-    borderColor: "#ff9800",
-    justifyContent: "center",
+    borderColor: "#00bcd4",
     alignItems: "center",
-    overflow: "hidden",
+    justifyContent: "center",
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#2a2a2a",
+    paddingBottom: 12,
+  },
+  rowInvite: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  icon: {
+    marginRight: 14,
+  },
+  label: {
+    color: "#888",
+    fontSize: 12,
+    marginBottom: 2,
+    textTransform: "uppercase",
+    fontWeight: "600",
+  },
+  value: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "bold",
+  },
+  bioValue: {
+    color: "#ccc",
+    fontSize: 14,
+    fontStyle: "italic",
+    lineHeight: 20,
+  },
+  codeContainer: {
+    backgroundColor: "#1a150c",
+    borderWidth: 1.5,
+    borderColor: "#ff9800",
+    borderRadius: 10,
+    padding: 14,
+    marginTop: 6,
+  },
+  codeLabel: {
+    color: "#ff9800",
+    fontSize: 12,
+    fontWeight: "bold",
+    textTransform: "uppercase",
+  },
+  codeValue: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "bold",
+    letterSpacing: 1.5,
+    marginTop: 2,
+  },
+  codeTip: {
+    color: "#aaa",
+    fontSize: 12,
+    fontStyle: "italic",
+    marginTop: 6,
+  },
+  emptyText: {
+    color: "#666",
+    textAlign: "center",
+    fontStyle: "italic",
+    marginTop: 30,
+    fontSize: 15,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.8)",
+    justifyContent: "center",
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: "#1e1e1e",
+    borderRadius: 12,
+    padding: 18,
+    borderWidth: 1.5,
+    borderColor: "#00bcd4",
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: "bold",
+    color: "#00bcd4",
+    marginBottom: 14,
+    textAlign: "center",
+  },
+  deleteWarningText: {
+    color: "#ccc",
+    fontSize: 14,
+    textAlign: "center",
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  inputLabel: {
+    color: "#aaa",
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  input: {
+    backgroundColor: "#121212",
+    borderWidth: 1,
+    borderColor: "#333",
+    borderRadius: 8,
+    padding: 10,
+    color: "#fff",
+    fontSize: 13,
     marginBottom: 12,
   },
+  pickerButton: {
+    backgroundColor: "#121212",
+    borderWidth: 1,
+    borderColor: "#333",
+    borderRadius: 8,
+    padding: 12,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  pickerButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  keysGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+  },
+  genreChip: {
+    width: "48%",
+    backgroundColor: "#121212",
+    paddingVertical: 12,
+    marginBottom: 8,
+    alignItems: "center",
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#333",
+  },
+  keyChipSelected: {
+    backgroundColor: "#00bcd4",
+    borderColor: "#00bcd4",
+  },
+  keyChipText: {
+    color: "#aaa",
+    fontWeight: "bold",
+    fontSize: 15,
+  },
+  keyChipTextSelected: {
+    color: "#000",
+  },
+  smallBackButton: {
+    backgroundColor: "#ff9800",
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    alignSelf: "center",
+    marginTop: 10,
+  },
+  smallBackButtonText: { color: "#000", fontWeight: "bold", fontSize: 13 },
   logoContainerModal: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
     backgroundColor: "#121212",
     borderWidth: 2,
     borderColor: "#00bcd4",
@@ -500,148 +837,59 @@ const styles = StyleSheet.create({
     height: "100%",
     resizeMode: "cover",
   },
-  logoFallback: {
-    fontSize: 34,
-  },
   editBadge: {
     position: "absolute",
     bottom: 0,
     right: 0,
     backgroundColor: "#00bcd4",
-    padding: 5,
-    borderTopLeftRadius: 8,
+    padding: 6,
+    borderTopLeftRadius: 10,
   },
   tipText: {
     color: "#aaa",
     fontSize: 12,
-    marginTop: 4,
+    marginTop: 6,
   },
-  bandTitle: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "#fff",
-    textAlign: "center",
-    marginBottom: 4,
+  buttonRowContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 14,
+    gap: 8,
   },
-  bandGenre: {
-    fontSize: 15,
-    color: "#ff9800",
-    fontWeight: "600",
-    marginBottom: 10,
-  },
-  bioPreviewContainer: {
-    backgroundColor: "#121212",
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#333",
-    width: "100%",
-    marginBottom: 14,
-  },
-  bioPreviewText: {
-    color: "#ccc",
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: "center",
-  },
-  editButtonOrange: {
-    backgroundColor: "#ff9800",
+  btnContentWithIcon: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    marginTop: 4,
   },
-  editButtonText: {
-    color: "#000",
-    fontWeight: "bold",
-    fontSize: 14,
-  },
-  sectionTitleTurquoise: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#00bcd4",
-    alignSelf: "flex-start",
-  },
-  codeTouchable: {
-    alignItems: "center",
-    marginVertical: 4,
-  },
-  codeText: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#fff",
-    backgroundColor: "#121212",
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#333",
-    overflow: "hidden",
-    textAlign: "center",
-    letterSpacing: 2,
-  },
-  codeHint: {
-    fontSize: 14,
-    color: "#aaa",
-    textAlign: "center",
-    marginTop: 8,
-  },
-  modalOverlay: {
+  actionBtnSave: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.8)",
-    justifyContent: "center",
-    padding: 20,
-  },
-  modalContent: {
-    backgroundColor: "#1e1e1e",
-    borderRadius: 12,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: "#ff9800",
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#ff9800",
-  },
-  label: {
-    fontSize: 14,
-    color: "#ccc",
-    marginBottom: 4,
-    marginTop: 8,
-    fontWeight: "600",
-  },
-  input: {
-    backgroundColor: "#121212",
-    borderWidth: 1,
-    borderColor: "#333",
-    borderRadius: 8,
-    padding: 10,
-    color: "#fff",
-    fontSize: 15,
-    marginBottom: 8,
-  },
-  modalCloseButtonOrange: {
-    backgroundColor: "#2a2a2a",
-    padding: 12,
+    backgroundColor: "#00bcd4",
+    paddingVertical: 12,
     borderRadius: 6,
     alignItems: "center",
   },
-  modalCloseButtonOrangeText: {
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 14,
-  },
-  modalCloseButtonSave: {
-    backgroundColor: "#ff9800",
-    padding: 12,
+  actionBtnDelete: {
+    flex: 1,
+    backgroundColor: "#ff9800", // Naranja para borrar
+    paddingVertical: 12,
     borderRadius: 6,
     alignItems: "center",
   },
-  modalCloseButtonSaveText: {
+  actionBtnClose: {
+    flex: 1,
+    backgroundColor: "#ffffff",
+    paddingVertical: 12,
+    borderRadius: 6,
+    alignItems: "center",
+  },
+  actionBtnCloseWhite: {
+    flex: 1,
+    backgroundColor: "#ffffff", // Blanco para cancelar en borrar
+    paddingVertical: 12,
+    borderRadius: 6,
+    alignItems: "center",
+  },
+  actionBtnTextDark: {
     color: "#000",
     fontWeight: "bold",
     fontSize: 14,
