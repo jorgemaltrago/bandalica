@@ -155,7 +155,7 @@ export default function WelcomeScreen() {
           >
             <Ionicons
               name={showPassword ? "eye-off" : "eye"}
-              size={17}
+              size={20}
               color="#888"
             />
           </TouchableOpacity>
@@ -194,7 +194,7 @@ export default function WelcomeScreen() {
 
       <View style={styles.creditsSection}>
         <Text style={styles.authorText}>
-          Jorge Martín Cabello © 2026. Todos los derechos reservados.
+          Jorge Martín Cabello{"\n"}© 2026. Todos los derechos reservados.
         </Text>
         <Text style={styles.testModeText}>Aplicación en modo pruebas</Text>
       </View>
@@ -213,15 +213,15 @@ const styles = StyleSheet.create({
   },
   logoSection: {
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 16,
   },
   logo: {
-    width: 90,
-    height: 90,
-    marginBottom: 6,
+    width: 125,
+    height: 125,
+    marginBottom: 8,
   },
   appSubtitle: {
-    fontSize: 15,
+    fontSize: 16,
     color: "#00bcd4",
     fontWeight: "600",
     textAlign: "center",
@@ -231,16 +231,16 @@ const styles = StyleSheet.create({
     width: "100%",
     backgroundColor: "#1e1e1e",
     borderRadius: 12,
-    padding: 16,
+    padding: 18,
     borderWidth: 1.5,
     borderColor: "#fff",
     marginBottom: 16,
   },
   cardTitle: {
-    fontSize: 19,
+    fontSize: 21,
     fontWeight: "bold",
     color: "#ff9800",
-    marginBottom: 12,
+    marginBottom: 14,
     textAlign: "center",
   },
   input: {
@@ -248,10 +248,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#333",
     borderRadius: 8,
-    padding: 10,
+    padding: 14,
     color: "#fff",
-    fontSize: 15,
-    marginBottom: 10,
+    fontSize: 18, // Texto más grande en el input de correo
+    marginBottom: 12,
   },
   passwordContainer: {
     flexDirection: "row",
@@ -260,13 +260,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#333",
     borderRadius: 8,
-    marginBottom: 10,
+    marginBottom: 12,
   },
   passwordInput: {
     flex: 1,
-    padding: 10,
+    padding: 14,
     color: "#fff",
-    fontSize: 15,
+    fontSize: 18, // Texto más grande en el input de contraseña
   },
   eyeButton: {
     paddingHorizontal: 12,
@@ -275,32 +275,32 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     backgroundColor: "#ff9800",
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderRadius: 8,
     alignItems: "center",
-    marginBottom: 10,
+    marginBottom: 12,
   },
   primaryButtonText: {
     color: "#000",
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: "bold",
   },
   forgotPasswordContainer: {
     alignItems: "center",
-    marginBottom: 10,
+    marginBottom: 12,
   },
   forgotPasswordText: {
     color: "#ff9800",
-    fontSize: 13.5,
+    fontSize: 14.5,
     textDecorationLine: "underline",
   },
   registerLinkContainer: {
     alignItems: "center",
-    marginTop: 2,
+    marginTop: 4,
   },
   registerLinkText: {
     color: "#aaa",
-    fontSize: 14.5,
+    fontSize: 15.5,
   },
   registerLinkHighlight: {
     color: "#00bcd4",
@@ -311,13 +311,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   authorText: {
-    fontSize: 13,
+    fontSize: 14,
     color: "#777",
     textAlign: "center",
-    lineHeight: 18,
+    lineHeight: 20, // Altura de línea ajustada para que respire bien al estar en dos líneas
   },
   testModeText: {
-    fontSize: 12,
+    fontSize: 13,
     color: "#00bcd4",
     textAlign: "center",
     marginTop: 4,

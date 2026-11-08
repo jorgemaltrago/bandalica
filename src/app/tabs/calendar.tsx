@@ -3,13 +3,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import {
+  Linking,
   Modal,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 
 export default function CalendarScreen() {
@@ -116,7 +117,7 @@ export default function CalendarScreen() {
 
       const { data: repertoryData, error: repError } = await supabase
         .from("songs")
-        .select("id, title, genre, key, tempo, lyrics")
+        .select("id, title, genre, key, tempo, lyrics, pdf_url")
         .eq("band_id", bandId);
 
       if (!repError && repertoryData) {
@@ -140,7 +141,8 @@ export default function CalendarScreen() {
               genre,
               key,
               tempo,
-              lyrics
+              lyrics,
+              pdf_url
             )
           )
         `,
@@ -176,6 +178,20 @@ export default function CalendarScreen() {
       console.error("Error cargando calendario:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Función para abrir el PDF en el navegador o visor del sistema
+  const handleOpenPdf = async (url: string) => {
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        showToast("No se puede abrir este archivo PDF.");
+      }
+    } catch (error) {
+      showToast("Ocurrió un error al intentar abrir el PDF.");
     }
   };
 
@@ -1005,7 +1021,8 @@ export default function CalendarScreen() {
                           {index + 1}. {song.title}
                         </Text>
                         <Text style={styles.modalSongMetaLarge}>
-                          Tono: {song.key || "N/A"}
+                          Tono: {song.key || "N/A"}{" "}
+                          {song.pdf_url ? "| 📄 PDF" : ""}
                         </Text>
                       </TouchableOpacity>
 
@@ -1149,7 +1166,7 @@ export default function CalendarScreen() {
         </View>
       </Modal>
 
-      {/* MODAL 2: CARACTERÍSTICAS DE LA CANCIÓN SELECCIONADA */}
+      {/* MODAL 2: CARACTERÍSTICAS DE LA CANCIÓN SELECCIONADA CON CONSULTA DE PDF */}
       <Modal
         visible={isSongDetailModalVisible}
         transparent
@@ -1161,32 +1178,52 @@ export default function CalendarScreen() {
               🎵 {selectedSongDetail?.title}
             </Text>
 
-            <View style={styles.songDetailContainer}>
-              <Text style={styles.songDetailText}>
-                ⭐ <Text style={styles.boldText}>Género:</Text>{" "}
-                {selectedSongDetail?.genre || "No especificado"}
-              </Text>
-              <Text style={styles.songDetailText}>
-                🎹 <Text style={styles.boldText}>Tono (Key):</Text>{" "}
-                {selectedSongDetail?.key || "No especificado"}
-              </Text>
-              <Text style={styles.songDetailText}>
-                ⏱️ <Text style={styles.boldText}>Tempo:</Text>{" "}
-                {selectedSongDetail?.tempo
-                  ? `${selectedSongDetail.tempo} BPM`
-                  : "No especificado"}
-              </Text>
-
-              <Text style={[styles.subSectionTitle, { marginTop: 15 }]}>
-                Letra / Notas:
-              </Text>
-              <ScrollView style={styles.lyricsScroll}>
-                <Text style={styles.lyricsText}>
-                  {selectedSongDetail?.lyrics ||
-                    "Sin letra o notas registradas."}
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.songDetailContainer}>
+                <Text style={styles.songDetailText}>
+                  ⭐ <Text style={styles.boldText}>Género:</Text>{" "}
+                  {selectedSongDetail?.genre || "No especificado"}
                 </Text>
-              </ScrollView>
-            </View>
+                <Text style={styles.songDetailText}>
+                  🎹 <Text style={styles.boldText}>Tono (Key):</Text>{" "}
+                  {selectedSongDetail?.key || "No especificado"}
+                </Text>
+                <Text style={styles.songDetailText}>
+                  ⏱️ <Text style={styles.boldText}>Tempo:</Text>{" "}
+                  {selectedSongDetail?.tempo
+                    ? `${selectedSongDetail.tempo} BPM`
+                    : "No especificado"}
+                </Text>
+
+                {/* BOTÓN EXPLÍCITO PARA CONSULTAR EL PDF DE LA CANCIÓN */}
+                {selectedSongDetail?.pdf_url && (
+                  <TouchableOpacity
+                    style={styles.consultPdfButton}
+                    onPress={() => handleOpenPdf(selectedSongDetail.pdf_url)}
+                  >
+                    <Ionicons
+                      name="document-text"
+                      size={18}
+                      color="#000"
+                      style={{ marginRight: 8 }}
+                    />
+                    <Text style={styles.consultPdfButtonText}>
+                      Consultar PDF de la Canción
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                <Text style={[styles.subSectionTitle, { marginTop: 15 }]}>
+                  Letra / Notas:
+                </Text>
+                <ScrollView style={styles.lyricsScroll}>
+                  <Text style={styles.lyricsText}>
+                    {selectedSongDetail?.lyrics ||
+                      "Sin letra o notas registradas."}
+                  </Text>
+                </ScrollView>
+              </View>
+            </ScrollView>
 
             <TouchableOpacity
               style={styles.modalCloseButtonOrange}
@@ -1285,7 +1322,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "bold",
   },
-  /* Módulo de Calendario: Línea Blanca en el borde */
   cardCalendar: {
     backgroundColor: "#1e1e1e",
     borderRadius: 12,
@@ -1296,7 +1332,6 @@ const styles = StyleSheet.create({
     borderColor: "#ffffff",
     marginBottom: 12,
   },
-  /* Módulo de Eventos Activos: Línea Naranja en el borde */
   cardEventsList: {
     backgroundColor: "#1e1e1e",
     borderRadius: 12,
@@ -1307,7 +1342,6 @@ const styles = StyleSheet.create({
     borderColor: "#ff9800",
     marginBottom: 12,
   },
-  /* Módulo de Añadir Evento: Línea Turquesa en el borde */
   cardAddModule: {
     backgroundColor: "#1e1e1e",
     borderRadius: 12,
@@ -1626,14 +1660,29 @@ const styles = StyleSheet.create({
     backgroundColor: "#121212",
     padding: 12,
     borderRadius: 6,
-    maxHeight: 220,
+    maxHeight: 180,
     borderWidth: 1,
     borderColor: "#2a2a2a",
+    marginTop: 8,
   },
   lyricsText: {
     color: "#ccc",
     fontSize: 15,
     lineHeight: 22,
+  },
+  consultPdfButton: {
+    backgroundColor: "#00bcd4",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 10,
+  },
+  consultPdfButtonText: {
+    color: "#000",
+    fontWeight: "bold",
+    fontSize: 15,
   },
   editSongRow: {
     flexDirection: "row",

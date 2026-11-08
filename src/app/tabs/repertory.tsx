@@ -1,9 +1,11 @@
 import { supabase } from "@/services/supabase";
 import { Ionicons } from "@expo/vector-icons";
+import * as DocumentPicker from "expo-document-picker";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   Alert,
+  Linking,
   Modal,
   ScrollView,
   StyleSheet,
@@ -21,6 +23,7 @@ export default function RepertoireScreen() {
   const [bandSongs, setBandSongs] = useState<any[]>([]);
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   // Estados para controlar los selectores flotantes de tonalidad y género
   const [isKeyPickerVisible, setIsKeyPickerVisible] = useState(false);
@@ -31,7 +34,7 @@ export default function RepertoireScreen() {
     "new",
   );
 
-  // Estado para el mensaje flotante (Toast) elegante en lugar de alertas blancas
+  // Estado para el mensaje flotante (Toast)
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -62,7 +65,6 @@ export default function RepertoireScreen() {
     return found ? found.label : val || "Do";
   };
 
-  // Lista de géneros preestablecidos con Flamenco incluido
   const musicGenres = [
     "Blues",
     "Pop",
@@ -79,14 +81,19 @@ export default function RepertoireScreen() {
   const [newKey, setNewKey] = useState("C");
   const [newTempo, setNewTempo] = useState("");
   const [newLyrics, setNewLyrics] = useState("");
+  const [newPdfFile, setNewPdfFile] = useState<any>(null);
 
-  // Estados del formulario de edición / detalle de canción seleccionada
+  // Estados del formulario de edición
   const [selectedSong, setSelectedSong] = useState<any | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editGenre, setEditGenre] = useState("Rock");
   const [editKey, setEditKey] = useState("C");
   const [editTempo, setEditTempo] = useState("");
   const [editLyrics, setEditLyrics] = useState("");
+  const [editPdfFile, setEditPdfFile] = useState<any>(null);
+  const [editExistingPdfUrl, setEditExistingPdfUrl] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     if (bandId) {
@@ -110,6 +117,64 @@ export default function RepertoireScreen() {
     }
   };
 
+  // Función para seleccionar PDF
+  const pickPdf = async (target: "new" | "edit") => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: "application/pdf",
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        if (target === "new") {
+          setNewPdfFile(result.assets[0]);
+        } else {
+          setEditPdfFile(result.assets[0]);
+        }
+        showToast("PDF adjuntado con éxito");
+      }
+    } catch (error) {
+      Alert.alert("Error", "No se pudo seleccionar el archivo PDF.");
+    }
+  };
+
+  // Función para abrir el PDF en el navegador o visor del sistema
+  const handleOpenPdf = async (url: string) => {
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert("Error", "No se puede abrir este archivo PDF.");
+      }
+    } catch (error) {
+      Alert.alert("Error", "Ocurrió un error al intentar abrir el PDF.");
+    }
+  };
+
+  // Función auxiliar para subir el PDF a Supabase Storage
+  const uploadPdfToStorage = async (pdfAsset: any) => {
+    const response = await fetch(pdfAsset.uri);
+    const blob = await response.blob();
+    const fileExt = pdfAsset.name.split(".").pop();
+    const fileName = `${Date.now()}.${fileExt}`;
+    const filePath = `pdf_lyrics/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("songs")
+      .upload(filePath, blob, {
+        contentType: "application/pdf",
+      });
+
+    if (uploadError) throw uploadError;
+
+    const { data: publicUrlData } = supabase.storage
+      .from("songs")
+      .getPublicUrl(filePath);
+
+    return publicUrlData.publicUrl;
+  };
+
   const handleCreateAndAddSong = async () => {
     if (!newTitle.trim()) {
       Alert.alert("Campo obligatorio", "Introduce el título de la canción.");
@@ -121,7 +186,13 @@ export default function RepertoireScreen() {
       return;
     }
 
+    setUploading(true);
     try {
+      let pdfUrl = null;
+      if (newPdfFile) {
+        pdfUrl = await uploadPdfToStorage(newPdfFile);
+      }
+
       const currentUserId =
         userId || (await supabase.auth.getUser()).data.user?.id || null;
 
@@ -131,6 +202,7 @@ export default function RepertoireScreen() {
         key: newKey || "C",
         tempo: newTempo.trim() || null,
         lyrics: newLyrics.trim() || null,
+        pdf_url: pdfUrl,
         band_id: bandId,
       };
 
@@ -149,12 +221,15 @@ export default function RepertoireScreen() {
       setNewKey("C");
       setNewTempo("");
       setNewLyrics("");
+      setNewPdfFile(null);
       setIsAddModalVisible(false);
       loadRepertoire();
 
       showToast("Canción añadida correctamente");
     } catch (error: any) {
       Alert.alert("Error al registrar", error.message);
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -167,7 +242,13 @@ export default function RepertoireScreen() {
       return;
     }
 
+    setUploading(true);
     try {
+      let pdfUrl = editExistingPdfUrl;
+      if (editPdfFile) {
+        pdfUrl = await uploadPdfToStorage(editPdfFile);
+      }
+
       const { error } = await supabase
         .from("songs")
         .update({
@@ -176,6 +257,7 @@ export default function RepertoireScreen() {
           key: editKey || "C",
           tempo: editTempo.trim() || null,
           lyrics: editLyrics.trim() || null,
+          pdf_url: pdfUrl,
         })
         .eq("id", selectedSong.id);
 
@@ -187,6 +269,8 @@ export default function RepertoireScreen() {
       showToast("Cambios actualizados correctamente");
     } catch (error: any) {
       Alert.alert("Error", "No se pudo actualizar la canción.");
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -224,12 +308,13 @@ export default function RepertoireScreen() {
     setEditKey(song.key || "C");
     setEditTempo(song.tempo || "");
     setEditLyrics(song.lyrics || "");
+    setEditExistingPdfUrl(song.pdf_url || null);
+    setEditPdfFile(null);
     setIsEditModalVisible(true);
   };
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      {/* AVISO FLOTANTE (TOAST) ESTILO OSCURO */}
       {toastMessage && (
         <View style={styles.toastContainer}>
           <Ionicons
@@ -242,7 +327,6 @@ export default function RepertoireScreen() {
         </View>
       )}
 
-      {/* TÍTULO PRINCIPAL */}
       <View
         style={{ flexDirection: "row", alignItems: "center", marginBottom: 15 }}
       >
@@ -292,7 +376,7 @@ export default function RepertoireScreen() {
               style={{
                 flexDirection: "row",
                 justifyContent: "space-between",
-                alignItems: "center",
+                alignItems: "flex-start",
               }}
             >
               <View style={{ flex: 1 }}>
@@ -301,9 +385,34 @@ export default function RepertoireScreen() {
                   Tonalidad: {getKeyLabel(song.key)} | Tempo:{" "}
                   {song.tempo || "N/D"}
                 </Text>
+
+                {/* Botón explícito debajo de la tonalidad y tempo si tiene PDF */}
+                {song.pdf_url && (
+                  <TouchableOpacity
+                    style={styles.pdfBadgeButton}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      handleOpenPdf(song.pdf_url);
+                    }}
+                  >
+                    <Ionicons
+                      name="document-text"
+                      size={16}
+                      color="#00bcd4"
+                      style={{ marginRight: 6 }}
+                    />
+                    <Text style={styles.pdfBadgeText}>Consultar PDF</Text>
+                  </TouchableOpacity>
+                )}
               </View>
 
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  marginTop: 4,
+                }}
+              >
                 <Ionicons
                   name="create-outline"
                   size={24}
@@ -346,9 +455,6 @@ export default function RepertoireScreen() {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={styles.label}>
-                Crear tema nuevo para esta banda:
-              </Text>
               <TextInput
                 style={styles.input}
                 placeholder="Título *"
@@ -357,7 +463,6 @@ export default function RepertoireScreen() {
                 onChangeText={setNewTitle}
               />
 
-              {/* BOTÓN DESPLEGABLE PARA GÉNERO (CREACIÓN) */}
               <Text style={styles.label}>Género:</Text>
               <TouchableOpacity
                 style={styles.pickerButton}
@@ -370,7 +475,6 @@ export default function RepertoireScreen() {
                 <Ionicons name="chevron-down" size={20} color="#00bcd4" />
               </TouchableOpacity>
 
-              {/* BOTÓN DESPLEGABLE PARA TONALIDAD (CREACIÓN) */}
               <Text style={styles.label}>Tonalidad:</Text>
               <TouchableOpacity
                 style={styles.pickerButton}
@@ -392,24 +496,39 @@ export default function RepertoireScreen() {
                 value={newTempo}
                 onChangeText={setNewTempo}
               />
+
               <TextInput
-                style={[
-                  styles.input,
-                  { height: 110, textAlignVertical: "top" },
-                ]}
-                placeholder="Letra de la canción (opcional)"
+                style={[styles.input, { height: 90, textAlignVertical: "top" }]}
+                placeholder="Letra de la canción en texto (opcional)"
                 placeholderTextColor="#666"
                 multiline
                 value={newLyrics}
                 onChangeText={setNewLyrics}
               />
+
+              {/* Selector de PDF en Creación */}
+              <Text style={styles.label}>Archivo PDF (Partitura / Letra):</Text>
+              <TouchableOpacity
+                style={styles.pdfPickerButton}
+                onPress={() => pickPdf("new")}
+              >
+                <Ionicons
+                  name="document-text-outline"
+                  size={20}
+                  color="#00bcd4"
+                  style={{ marginRight: 8 }}
+                />
+                <Text style={styles.pdfPickerText} numberOfLines={1}>
+                  {newPdfFile ? newPdfFile.name : "📂 Adjuntar archivo PDF"}
+                </Text>
+              </TouchableOpacity>
             </ScrollView>
 
-            {/* BOTONERA INFERIOR (AÑADIR TEMA): GUARDAR (TURQUESA) Y CANCELAR (NARANJA) */}
             <View style={styles.buttonRowContainer}>
               <TouchableOpacity
                 style={styles.actionBtnSave}
                 onPress={handleCreateAndAddSong}
+                disabled={uploading}
               >
                 <View style={styles.btnContentWithIcon}>
                   <Ionicons
@@ -418,7 +537,9 @@ export default function RepertoireScreen() {
                     color="#000"
                     style={{ marginRight: 6 }}
                   />
-                  <Text style={styles.actionBtnTextDark}>Guardar</Text>
+                  <Text style={styles.actionBtnTextDark}>
+                    {uploading ? "Subiendo..." : "Guardar"}
+                  </Text>
                 </View>
               </TouchableOpacity>
 
@@ -471,7 +592,6 @@ export default function RepertoireScreen() {
                 onChangeText={setEditTitle}
               />
 
-              {/* BOTÓN DESPLEGABLE PARA GÉNERO (EDICIÓN) */}
               <Text style={styles.label}>Género:</Text>
               <TouchableOpacity
                 style={styles.pickerButton}
@@ -484,7 +604,6 @@ export default function RepertoireScreen() {
                 <Ionicons name="chevron-down" size={20} color="#00bcd4" />
               </TouchableOpacity>
 
-              {/* BOTÓN DESPLEGABLE PARA TONALIDAD (EDICIÓN) */}
               <Text style={styles.label}>Tonalidad:</Text>
               <TouchableOpacity
                 style={styles.pickerButton}
@@ -507,25 +626,62 @@ export default function RepertoireScreen() {
                 value={editTempo}
                 onChangeText={setEditTempo}
               />
-              <Text style={styles.label}>Letra / Notas:</Text>
+
+              <Text style={styles.label}>Letra / Notas (Texto):</Text>
               <TextInput
-                style={[
-                  styles.input,
-                  { height: 150, textAlignVertical: "top" },
-                ]}
+                style={[styles.input, { height: 90, textAlignVertical: "top" }]}
                 placeholder="Letra o notas registradas"
                 placeholderTextColor="#666"
                 multiline
                 value={editLyrics}
                 onChangeText={setEditLyrics}
               />
+
+              {/* Botón directo en edición para consultar el PDF existente */}
+              {editExistingPdfUrl && !editPdfFile && (
+                <TouchableOpacity
+                  style={styles.consultPdfButton}
+                  onPress={() => handleOpenPdf(editExistingPdfUrl)}
+                >
+                  <Ionicons
+                    name="eye-outline"
+                    size={18}
+                    color="#000"
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text style={styles.consultPdfButtonText}>
+                    Consultar PDF Actual
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Selector de PDF en Edición */}
+              <Text style={styles.label}>Cambiar o Adjuntar Archivo PDF:</Text>
+              <TouchableOpacity
+                style={styles.pdfPickerButton}
+                onPress={() => pickPdf("edit")}
+              >
+                <Ionicons
+                  name="document-text-outline"
+                  size={20}
+                  color="#00bcd4"
+                  style={{ marginRight: 8 }}
+                />
+                <Text style={styles.pdfPickerText} numberOfLines={1}>
+                  {editPdfFile
+                    ? editPdfFile.name
+                    : editExistingPdfUrl
+                      ? "📄 PDF actual guardado (Toca para reemplazar)"
+                      : "📂 Adjuntar archivo PDF"}
+                </Text>
+              </TouchableOpacity>
             </ScrollView>
 
-            {/* BOTONERA INFERIOR (EDITAR): GUARDAR (TURQUESA), ELIMINAR (NARANJA), VOLVER (BLANCO) */}
             <View style={styles.buttonRowContainer}>
               <TouchableOpacity
                 style={styles.actionBtnSave}
                 onPress={handleUpdateSong}
+                disabled={uploading}
               >
                 <View style={styles.btnContentWithIcon}>
                   <Ionicons
@@ -534,7 +690,9 @@ export default function RepertoireScreen() {
                     color="#000"
                     style={{ marginRight: 6 }}
                   />
-                  <Text style={styles.actionBtnTextDark}>Guardar</Text>
+                  <Text style={styles.actionBtnTextDark}>
+                    {uploading ? "Guardando..." : "Guardar"}
+                  </Text>
                 </View>
               </TouchableOpacity>
 
@@ -574,15 +732,11 @@ export default function RepertoireScreen() {
         </View>
       </Modal>
 
-      {/* VENTANA FLOTANTE (SUB-MODAL) PARA SELECCIONAR EL GÉNERO */}
+      {/* MODAL SELECCIONAR GÉNERO */}
       <Modal visible={isGenrePickerVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { maxHeight: "55%" }]}>
             <Text style={styles.modalTitle}>Seleccionar Género Musical</Text>
-            <Text style={[styles.label, { marginBottom: 12, color: "#aaa" }]}>
-              Elige un género:
-            </Text>
-
             <ScrollView contentContainerStyle={styles.keysGrid}>
               {musicGenres.map((g) => {
                 const currentSelected =
@@ -616,7 +770,6 @@ export default function RepertoireScreen() {
                 );
               })}
             </ScrollView>
-
             <TouchableOpacity
               style={styles.smallBackButton}
               onPress={() => setIsGenrePickerVisible(false)}
@@ -627,15 +780,11 @@ export default function RepertoireScreen() {
         </View>
       </Modal>
 
-      {/* VENTANA FLOTANTE (SUB-MODAL) PARA SELECCIONAR LA TONALIDAD EN ESPAÑOL */}
+      {/* MODAL SELECCIONAR TONALIDAD */}
       <Modal visible={isKeyPickerVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { paddingBottom: 16 }]}>
             <Text style={styles.modalTitle}>Seleccionar Tonalidad</Text>
-            <Text style={[styles.label, { marginBottom: 8, color: "#aaa" }]}>
-              Elige una nota musical:
-            </Text>
-
             <View style={styles.keysGridCompact}>
               {musicalKeysMap.map((item) => {
                 const currentSelected =
@@ -669,7 +818,6 @@ export default function RepertoireScreen() {
                 );
               })}
             </View>
-
             <TouchableOpacity
               style={styles.smallBackButton}
               onPress={() => setIsKeyPickerVisible(false)}
@@ -739,7 +887,38 @@ const styles = StyleSheet.create({
     fontSize: 18,
     marginBottom: 6,
   },
-  songMeta: { color: "#aaa", fontSize: 15 },
+  songMeta: { color: "#aaa", fontSize: 15, marginBottom: 8 },
+  pdfBadgeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#121212",
+    borderWidth: 1,
+    borderColor: "#00bcd4",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    alignSelf: "flex-start",
+    marginTop: 4,
+  },
+  pdfBadgeText: {
+    color: "#00bcd4",
+    fontSize: 13,
+    fontWeight: "bold",
+  },
+  consultPdfButton: {
+    backgroundColor: "#00bcd4",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  consultPdfButtonText: {
+    color: "#000",
+    fontWeight: "bold",
+    fontSize: 14,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.8)",
@@ -785,6 +964,21 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
+  },
+  pdfPickerButton: {
+    backgroundColor: "#121212",
+    borderWidth: 1,
+    borderColor: "#333",
+    borderRadius: 8,
+    padding: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  pdfPickerText: {
+    color: "#00bcd4",
+    fontSize: 15,
+    flex: 1,
   },
   keysGrid: {
     flexDirection: "row",
@@ -856,28 +1050,28 @@ const styles = StyleSheet.create({
   },
   actionBtnSave: {
     flex: 1,
-    backgroundColor: "#00bcd4", // Turquesa
+    backgroundColor: "#00bcd4",
     paddingVertical: 12,
     borderRadius: 6,
     alignItems: "center",
   },
   actionBtnDelete: {
     flex: 1,
-    backgroundColor: "#ff9800", // Naranja
+    backgroundColor: "#ff9800",
     paddingVertical: 12,
     borderRadius: 6,
     alignItems: "center",
   },
   actionBtnCancel: {
     flex: 1,
-    backgroundColor: "#ff9800", // Naranja para cancelar en añadir
+    backgroundColor: "#ff9800",
     paddingVertical: 12,
     borderRadius: 6,
     alignItems: "center",
   },
   actionBtnClose: {
     flex: 1,
-    backgroundColor: "#ffffff", // Blanco
+    backgroundColor: "#ffffff",
     paddingVertical: 12,
     borderRadius: 6,
     alignItems: "center",
