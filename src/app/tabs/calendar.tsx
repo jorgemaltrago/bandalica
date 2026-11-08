@@ -75,6 +75,27 @@ export default function CalendarScreen() {
     }, 2500);
   };
 
+  // Mapeo de notas en inglés a español para mostrar en el calendario igual que en el repertorio
+  const musicalKeysMap = [
+    { label: "Do", value: "C" },
+    { label: "Do#", value: "C#" },
+    { label: "Re", value: "D" },
+    { label: "Re#", value: "D#" },
+    { label: "Mi", value: "E" },
+    { label: "Fa", value: "F" },
+    { label: "Fa#", value: "F#" },
+    { label: "Sol", value: "G" },
+    { label: "Sol#", value: "G#" },
+    { label: "La", value: "A" },
+    { label: "La#", value: "A#" },
+    { label: "Si", value: "B" },
+  ];
+
+  const getKeyLabel = (val: string) => {
+    const found = musicalKeysMap.find((k) => k.value === val);
+    return found ? found.label : val || "Do";
+  };
+
   const monthNames = [
     "Enero",
     "Febrero",
@@ -739,7 +760,7 @@ export default function CalendarScreen() {
                     {index + 1}. {songObj.title}
                   </Text>
                   <Text style={styles.modalSongMeta}>
-                    Tono: {songObj.key || "N/A"}
+                    Tono: {getKeyLabel(songObj.key)}
                   </Text>
                 </View>
                 <View style={styles.rowActionsRight}>
@@ -847,7 +868,7 @@ export default function CalendarScreen() {
                             {song.title}
                           </Text>
                           <Text style={styles.modalSongMeta}>
-                            Tono: {song.key || "N/A"}
+                            Tono: {getKeyLabel(song.key)}
                           </Text>
                         </View>
                         {added ? (
@@ -1021,7 +1042,7 @@ export default function CalendarScreen() {
                           {index + 1}. {song.title}
                         </Text>
                         <Text style={styles.modalSongMetaLarge}>
-                          Tono: {song.key || "N/A"}{" "}
+                          Tono: {getKeyLabel(song.key)}{" "}
                           {song.pdf_url ? "| 📄 PDF" : ""}
                         </Text>
                       </TouchableOpacity>
@@ -1132,7 +1153,7 @@ export default function CalendarScreen() {
                             {song.title}
                           </Text>
                           <Text style={styles.modalSongMetaLarge}>
-                            Tono: {song.key || "N/A"}
+                            Tono: {getKeyLabel(song.key)}
                           </Text>
                         </View>
                         {alreadyInEvent ? (
@@ -1186,7 +1207,7 @@ export default function CalendarScreen() {
                 </Text>
                 <Text style={styles.songDetailText}>
                   🎹 <Text style={styles.boldText}>Tono (Key):</Text>{" "}
-                  {selectedSongDetail?.key || "No especificado"}
+                  {getKeyLabel(selectedSongDetail?.key)}
                 </Text>
                 <Text style={styles.songDetailText}>
                   ⏱️ <Text style={styles.boldText}>Tempo:</Text>{" "}

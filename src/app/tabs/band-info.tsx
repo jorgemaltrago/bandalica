@@ -267,33 +267,29 @@ export default function BandInfoScreen() {
       )}
 
       <View style={styles.headerContainer}>
-        <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-          <Ionicons
-            name="radio-outline"
-            size={24}
-            color="#00bcd4"
-            style={{ marginRight: 8 }}
-          />
-          <Text style={styles.headerTitle}>Información de la Banda</Text>
-        </View>
+        <View style={{ flex: 1 }} />
 
-        {/* BOTONES DE ACCIÓN PARA EL CREADOR (EDITAR Y BORRAR BANDA) */}
+        {/* BOTONES DE ACCIÓN PARA EL CREADOR (CON TEXTO A LA IZQUIERDA DE CADA ICONO) */}
         {isCreator && (
-          <View style={{ flexDirection: "row" }}>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
             <TouchableOpacity
-              style={styles.editIconButton}
+              style={styles.actionButtonWithText}
               onPress={() => setIsEditModalVisible(true)}
             >
+              <Text style={styles.actionButtonText}>Editar</Text>
               <Ionicons name="create-outline" size={18} color="#00bcd4" />
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[
-                styles.editIconButton,
-                { marginLeft: 8, borderColor: "#ff9800" },
+                styles.actionButtonWithText,
+                { borderColor: "#ff9800", marginLeft: 8 },
               ]}
               onPress={() => setIsDeleteModalVisible(true)}
             >
+              <Text style={[styles.actionButtonText, { color: "#ff9800" }]}>
+                Borrar
+              </Text>
               <Ionicons name="trash-outline" size={18} color="#ff9800" />
             </TouchableOpacity>
           </View>
@@ -311,14 +307,14 @@ export default function BandInfoScreen() {
               />
             ) : (
               <View style={styles.bandLogoPlaceholder}>
-                <Ionicons name="musical-notes" size={40} color="#00bcd4" />
+                <Ionicons name="radio-outline" size={40} color="#00bcd4" />
               </View>
             )}
           </View>
 
           <View style={styles.row}>
             <Ionicons
-              name="musical-notes-outline"
+              name="radio-outline"
               size={20}
               color="#00bcd4"
               style={styles.icon}
@@ -418,7 +414,7 @@ export default function BandInfoScreen() {
                       style={styles.logoImg}
                     />
                   ) : (
-                    <Ionicons name="musical-notes" size={36} color="#00bcd4" />
+                    <Ionicons name="radio-outline" size={36} color="#00bcd4" />
                   )}
                   <View style={styles.editBadge}>
                     <Ionicons name="camera" size={16} color="#000" />
@@ -620,19 +616,21 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     marginTop: 10,
   },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "#fff",
-  },
-  editIconButton: {
+  actionButtonWithText: {
     backgroundColor: "#121212",
-    padding: 7,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 7,
+    paddingHorizontal: 12,
     borderRadius: 6,
     borderWidth: 1,
     borderColor: "#00bcd4",
-    alignItems: "center",
-    justifyContent: "center",
+  },
+  actionButtonText: {
+    color: "#00bcd4",
+    fontWeight: "bold",
+    fontSize: 13,
+    marginRight: 6,
   },
   card: {
     backgroundColor: "#1e1e1e",
@@ -870,7 +868,7 @@ const styles = StyleSheet.create({
   },
   actionBtnDelete: {
     flex: 1,
-    backgroundColor: "#ff9800", // Naranja para borrar
+    backgroundColor: "#ff9800",
     paddingVertical: 12,
     borderRadius: 6,
     alignItems: "center",
@@ -884,7 +882,7 @@ const styles = StyleSheet.create({
   },
   actionBtnCloseWhite: {
     flex: 1,
-    backgroundColor: "#ffffff", // Blanco para cancelar en borrar
+    backgroundColor: "#ffffff",
     paddingVertical: 12,
     borderRadius: 6,
     alignItems: "center",

@@ -2,8 +2,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-  Alert,
   Image,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -25,6 +25,21 @@ export default function WelcomeScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // Estados para el Modal de Aviso Personalizado (Errores / Bienvenida)
+  const [isWarningModalVisible, setIsWarningModalVisible] = useState(false);
+  const [warningMessage, setWarningMessage] = useState("");
+
+  // Estados para el Modal de Recuperación de Contraseña (con Teléfono y prefijo fijo integrado)
+  const [isForgotPasswordModalVisible, setIsForgotPasswordModalVisible] =
+    useState(false);
+  const [recoveryPhone, setRecoveryPhone] = useState("");
+  const [submittingRecovery, setSubmittingRecovery] = useState(false);
+
+  const showAlertModal = (msg: string) => {
+    setWarningMessage(msg);
+    setIsWarningModalVisible(true);
+  };
+
   // Comprobar si ya hay una sesión activa de forma segura (dinámica)
   useEffect(() => {
     if (Platform.OS !== "web") {
@@ -34,12 +49,24 @@ export default function WelcomeScreen() {
 
   const checkActiveSession = async () => {
     try {
-      // Importamos dinámicamente Supabase solo cuando el componente corre en el dispositivo
       const { supabase } = await import("@/services/supabase");
       const {
         data: { session },
       } = await supabase.auth.getSession();
-      if (session) {
+
+      if (session && session.user) {
+        if (session.user.email !== ADMIN_EMAIL) {
+          const { data: profileData } = await supabase
+            .from("profiles")
+            .select("is_active")
+            .eq("id", session.user.id)
+            .single();
+
+          if (profileData && profileData.is_active === false) {
+            await supabase.auth.signOut();
+            return;
+          }
+        }
         router.replace("/dashboard" as any);
       }
     } catch (error) {
@@ -47,72 +74,101 @@ export default function WelcomeScreen() {
     }
   };
 
-  // Función de Iniciar Sesión
+  // Función de Iniciar Sesión con validación de is_active y modal personalizado
   const handleLogin = async () => {
     if (!email.trim() || !password) {
-      Alert.alert(
-        "Campos requeridos",
-        "Por favor, introduce tu correo y contraseña.",
-      );
+      showAlertModal("Por favor, introduce tu correo y contraseña.");
       return;
     }
 
     setLoading(true);
     try {
       const { supabase } = await import("@/services/supabase");
+      const trimmedEmail = email.trim().toLowerCase();
+
+      // 1. Autenticar con Supabase Auth
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+        email: trimmedEmail,
         password: password,
       });
 
       if (error) throw error;
 
-      if (data.user?.email === ADMIN_EMAIL) {
-        Alert.alert(
-          "¡Bienvenido, Administrador!",
-          "Entrando a tu panel de control.",
-        );
+      const user = data.user;
+      if (!user) throw new Error("No se pudo obtener el usuario.");
+
+      // 2. Comprobar si está activo en la tabla profiles (excepto si es el admin principal)
+      if (trimmedEmail !== ADMIN_EMAIL) {
+        const { data: profileData, error: profileError } = await supabase
+          .from("profiles")
+          .select("is_active")
+          .eq("id", user.id)
+          .single();
+
+        if (profileError || !profileData || profileData.is_active !== true) {
+          await supabase.auth.signOut();
+          showAlertModal(
+            "Tu cuenta está pendiente de activación. Espera a que el administrador te active para poder entrar.",
+          );
+          return;
+        }
       }
 
       router.replace("/dashboard" as any);
     } catch (error: any) {
-      Alert.alert(
-        "Error de acceso",
-        error.message || "Credenciales incorrectas.",
-      );
+      showAlertModal(error.message || "Credenciales incorrectas.");
     } finally {
       setLoading(false);
     }
   };
 
-  // Función para que un usuario pida restablecer su contraseña
-  const handleForgotPassword = async () => {
+  // Abrir modal para solicitar contraseña pidiendo el teléfono
+  const handleOpenForgotPasswordModal = () => {
     if (!email.trim()) {
-      Alert.alert(
-        "Correo requerido",
-        "Por favor, introduce tu correo electrónico en el campo de arriba para enviar la petición al administrador.",
+      showAlertModal(
+        "Por favor, introduce primero tu correo electrónico arriba para solicitar la recuperación.",
+      );
+      return;
+    }
+    setRecoveryPhone("");
+    setIsForgotPasswordModalVisible(true);
+  };
+
+  // Enviar petición de contraseña junto con el teléfono formateado a Supabase
+  const handleConfirmForgotPassword = async () => {
+    if (recoveryPhone.length < 9) {
+      showAlertModal(
+        "Por favor, introduce los 9 dígitos de tu número de teléfono.",
       );
       return;
     }
 
     try {
+      setSubmittingRecovery(true);
       const { supabase } = await import("@/services/supabase");
-      const { error } = await supabase
-        .from("password_requests")
-        .insert([{ email: email.trim(), status: "pending" }]);
+
+      // Unimos de forma fija el prefijo +34 con los 9 dígitos introducidos
+      const fullPhone = "+34" + recoveryPhone;
+
+      // Guardamos la petición con el correo y el teléfono completo en la tabla password_requests
+      const { error } = await supabase.from("password_requests").insert([
+        {
+          email: email.trim().toLowerCase(),
+          phone: fullPhone,
+          status: "pending",
+        },
+      ]);
 
       if (error) throw error;
 
-      Alert.alert(
-        "Petición enviada",
-        "Se ha registrado tu solicitud. El administrador revisará la petición y te enviará una nueva contraseña.",
+      setIsForgotPasswordModalVisible(false);
+      showAlertModal(
+        "Petición enviada con éxito. El administrador revisará tu solicitud y te contactará por WhatsApp con una contraseña provisional.",
       );
     } catch (error: any) {
-      Alert.alert(
-        "Error",
-        error.message ||
-          "No se pudo registrar la petición de restablecimiento.",
-      );
+      showAlertModal(error.message || "No se pudo registrar la petición.");
+    } finally {
+      setSubmittingRecovery(false);
     }
   };
 
@@ -174,7 +230,7 @@ export default function WelcomeScreen() {
         {/* Botón de solicitar recuperación al admin */}
         <TouchableOpacity
           style={styles.forgotPasswordContainer}
-          onPress={handleForgotPassword}
+          onPress={handleOpenForgotPasswordModal}
         >
           <Text style={styles.forgotPasswordText}>
             ¿Has olvidado tu contraseña?
@@ -198,6 +254,106 @@ export default function WelcomeScreen() {
         </Text>
         <Text style={styles.testModeText}>Aplicación en modo pruebas</Text>
       </View>
+
+      {/* ========================================================== */}
+      {/* MODAL DE SOLICITUD DE CONTRASEÑA Y TELÉFONO (+34 FIJO) */}
+      {/* ========================================================== */}
+      <Modal
+        visible={isForgotPasswordModalVisible}
+        transparent
+        animationType="slide"
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={{ alignItems: "center", marginBottom: 10 }}>
+              <Ionicons name="logo-whatsapp" size={38} color="#25D366" />
+            </View>
+            <Text style={[styles.modalTitle, { color: "#ff9800" }]}>
+              Recuperar Contraseña
+            </Text>
+            <Text style={styles.modalDesc}>
+              Introduce tus 9 dígitos de teléfono. El sistema añadirá el +34
+              automáticamente para enviarte la clave por WhatsApp.
+            </Text>
+
+            <Text style={styles.inputLabel}>Tu Teléfono / WhatsApp:</Text>
+
+            {/* CAJA INTEGRADA CON EL +34 FIJO Y LOS 9 DÍGITOS */}
+            <View style={styles.phoneInputContainer}>
+              <Text style={styles.prefixFixedText}>+34</Text>
+              <View style={styles.phoneDivider} />
+              <TextInput
+                style={styles.phoneField}
+                placeholder="600123456"
+                placeholderTextColor="#666"
+                value={recoveryPhone}
+                onChangeText={(text) => {
+                  const numericOnly = text.replace(/[^0-9]/g, "").slice(0, 9);
+                  setRecoveryPhone(numericOnly);
+                }}
+                keyboardType="phone-pad"
+                maxLength={9}
+              />
+            </View>
+
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                marginTop: 20,
+              }}
+            >
+              <TouchableOpacity
+                style={[
+                  styles.modalBtnAction,
+                  {
+                    backgroundColor: "#333",
+                    borderWidth: 1,
+                    borderColor: "#666",
+                  },
+                ]}
+                onPress={() => setIsForgotPasswordModalVisible(false)}
+                disabled={submittingRecovery}
+              >
+                <Text style={{ color: "#fff", fontWeight: "bold" }}>
+                  Cancelar
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtnAction, { backgroundColor: "#ff9800" }]}
+                onPress={handleConfirmForgotPassword}
+                disabled={submittingRecovery}
+              >
+                <Text style={{ color: "#000", fontWeight: "bold" }}>
+                  Enviar Petición
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ========================================================== */}
+      {/* MODAL DE AVISO / ALERTA GENERAL (CON TEXTO "Cerrar" ASEGURADO) */}
+      {/* ========================================================== */}
+      <Modal visible={isWarningModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={{ alignItems: "center", marginBottom: 10 }}>
+              <Ionicons name="alert-circle-outline" size={42} color="#ff9800" />
+            </View>
+            <Text style={[styles.modalTitle, { color: "#ff9800" }]}>Aviso</Text>
+            <Text style={styles.modalDesc}>{warningMessage}</Text>
+
+            <TouchableOpacity
+              style={[styles.modalBtn, { backgroundColor: "#ff9800" }]}
+              onPress={() => setIsWarningModalVisible(false)}
+            >
+              <Text style={styles.modalBtnText}>Cerrar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -250,8 +406,36 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 14,
     color: "#fff",
-    fontSize: 18, // Texto más grande en el input de correo
+    fontSize: 16,
     marginBottom: 12,
+  },
+  phoneInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#121212",
+    borderWidth: 1,
+    borderColor: "#ff9800",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+  },
+  prefixFixedText: {
+    color: "#ff9800",
+    fontSize: 16,
+    fontWeight: "bold",
+    marginRight: 8,
+  },
+  phoneDivider: {
+    width: 1,
+    height: 22,
+    backgroundColor: "#333",
+    marginRight: 8,
+  },
+  phoneField: {
+    flex: 1,
+    color: "#fff",
+    fontSize: 16,
+    paddingVertical: 14,
   },
   passwordContainer: {
     flexDirection: "row",
@@ -266,7 +450,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 14,
     color: "#fff",
-    fontSize: 18, // Texto más grande en el input de contraseña
+    fontSize: 16,
   },
   eyeButton: {
     paddingHorizontal: 12,
@@ -314,7 +498,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#777",
     textAlign: "center",
-    lineHeight: 20, // Altura de línea ajustada para que respire bien al estar en dos líneas
+    lineHeight: 20,
   },
   testModeText: {
     fontSize: 13,
@@ -322,5 +506,60 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 4,
     fontStyle: "italic",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.8)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  modalContent: {
+    backgroundColor: "#1e1e1e",
+    borderRadius: 12,
+    padding: 24,
+    borderWidth: 1.5,
+    borderColor: "#ff9800",
+    width: "88%",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    textAlign: "center",
+    marginBottom: 10,
+  },
+  modalDesc: {
+    color: "#aaa",
+    fontSize: 13.5,
+    marginBottom: 20,
+    textAlign: "center",
+    lineHeight: 19,
+  },
+  inputLabel: {
+    color: "#ccc",
+    fontSize: 13,
+    marginBottom: 4,
+  },
+  modalBtn: {
+    backgroundColor: "#ff9800",
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    alignItems: "center",
+    width: "100%",
+    justifyContent: "center",
+  },
+  modalBtnText: {
+    color: "#000",
+    fontWeight: "bold",
+    fontSize: 16,
+    textAlign: "center",
+  },
+  modalBtnAction: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 8,
+    alignItems: "center",
+    marginHorizontal: 4,
   },
 });

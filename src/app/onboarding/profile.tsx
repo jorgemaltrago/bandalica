@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   ScrollView,
   StyleSheet,
@@ -13,6 +14,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+
+const ADMIN_EMAIL = "jorgemaltrago@gmail.com";
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -126,9 +129,12 @@ export default function ProfileScreen() {
       // Importación dinámica de Supabase para el registro
       const { supabase } = await import("@/services/supabase");
 
+      const trimmedEmail = email.trim().toLowerCase();
+      const isAdmin = trimmedEmail === ADMIN_EMAIL;
+
       // 1. Crear usuario en Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: email.trim(),
+        email: trimmedEmail,
         password: password,
       });
 
@@ -137,25 +143,42 @@ export default function ProfileScreen() {
       const user = authData.user;
       if (!user) throw new Error("No se pudo crear el usuario.");
 
-      // 2. Guardar los datos en la tabla profiles incluyendo el email
+      // 2. Guardar los datos en la tabla profiles con is_active en false (o true si es el admin)
       const { error: profileError } = await supabase.from("profiles").upsert({
         id: user.id,
-        email: email.trim(),
+        email: trimmedEmail,
         full_name: fullName.trim(),
         instrument: instrument.trim() || null,
         bio: bio.trim() || null,
         avatar_url: avatarUrl ? avatarUrl.split("?")[0] : null,
+        is_active: isAdmin, // El admin entra activo, los demás quedan pendientes (false)
       });
 
       if (profileError) throw profileError;
 
-      showToast("¡Registro completado con éxito!");
-      setTimeout(() => {
-        router.push("/dashboard" as any);
-      }, 1000);
+      // 3. Cerramos sesión inmediatamente para que no se queden dentro sin activar
+      await supabase.auth.signOut();
+
+      // 4. Mostrar alerta indicando que debe esperar al administrador
+      Alert.alert(
+        "Cuenta registrada con éxito",
+        "Tus datos se han guardado correctamente. Espera a que el administrador te active la cuenta de usuario para poder loguearte.",
+        [
+          {
+            text: "Entendido",
+            onPress: () => router.replace("/" as any), // Volver al login
+          },
+        ],
+      );
     } catch (error: any) {
       console.error("Error en el registro:", error);
-      showToast(error.message || "No se pudo completar el registro");
+
+      // Control amigable si el usuario ya está registrado en Supabase Auth[cite: 1]
+      if (error.message?.includes("User already registered")) {
+        showToast("Este correo ya está registrado. Inicia sesión.");
+      } else {
+        showToast(error.message || "No se pudo completar el registro");
+      }
     } finally {
       setLoading(false);
     }
@@ -268,6 +291,15 @@ export default function ProfileScreen() {
         >
           <Text style={styles.modalCloseButtonSaveText}>
             {loading ? "Registrando..." : "Completar Registro"}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.backLoginButton}
+          onPress={() => router.replace("/" as any)}
+        >
+          <Text style={styles.backLoginText}>
+            ¿Ya tienes cuenta? Iniciar Sesión
           </Text>
         </TouchableOpacity>
       </View>
@@ -394,5 +426,14 @@ const styles = StyleSheet.create({
     color: "#000",
     fontWeight: "bold",
     fontSize: 16,
+  },
+  backLoginButton: {
+    marginTop: 15,
+    padding: 10,
+    alignItems: "center",
+  },
+  backLoginText: {
+    color: "#aaa",
+    fontSize: 14,
   },
 });

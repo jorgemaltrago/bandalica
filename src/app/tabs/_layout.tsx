@@ -53,7 +53,7 @@ export default function TabLayout() {
               <Image source={{ uri: bandLogo }} style={styles.headerLogo} />
             ) : (
               <View style={styles.headerLogoPlaceholder}>
-                <Ionicons name="musical-notes" size={18} color="#00bcd4" />
+                <Ionicons name="radio-outline" size={18} color="#00bcd4" />
               </View>
             )}
             <Text style={styles.headerTitleText} numberOfLines={1}>
@@ -87,7 +87,7 @@ export default function TabLayout() {
             params: { bandId, userId },
           },
           tabBarIcon: ({ color }) => (
-            <Ionicons name="musical-notes" size={36} color={color} />
+            <Ionicons name="radio-outline" size={36} color={color} />
           ),
         }}
       />
@@ -150,7 +150,7 @@ const styles = {
     borderRadius: 18,
     backgroundColor: "#1e1e1e",
     borderWidth: 1.5,
-    borderColor: "#00bcd4kval",
+    borderColor: "#00bcd4",
     alignItems: "center" as const,
     justifyContent: "center" as const,
     marginRight: 10,
