@@ -433,6 +433,14 @@ export default function CalendarScreen() {
 
   const dayEvents = selectedDay !== null ? getEventsForDay(selectedDay) : [];
 
+  // Color dinámico para el módulo de añadir evento según el tipo seleccionado
+  const addModuleColor =
+    eventType === "Ensayo"
+      ? "#00bcd4"
+      : eventType === "Actuación"
+        ? "#ff9800"
+        : "#ffffff";
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       {/* AVISO FLOTANTE (TOAST) ESTILO OSCURO */}
@@ -503,7 +511,6 @@ export default function CalendarScreen() {
                   evType === "Ensayo" && styles.cellEnsayo,
                   evType === "Actuación" && styles.cellActuacion,
                   evType === "Otro" && styles.cellOtro,
-                  isToday && styles.todayCellHighlight,
                   isSelected && styles.dayCellSelected,
                 ]}
                 onPress={() => setSelectedDay(day)}
@@ -512,20 +519,29 @@ export default function CalendarScreen() {
                   style={[
                     styles.dayText,
                     isToday && styles.todayCellText,
-                    isSelected && !isToday && styles.dayTextSelected,
+                    isSelected && styles.dayTextSelected,
                   ]}
                 >
                   {day}
                 </Text>
+                {/* Subrayado inferior blanco exclusivo para el día actual */}
+                {isToday && <View style={styles.todayUnderlineBar} />}
               </TouchableOpacity>
             );
           })}
         </View>
       </View>
 
-      {/* MÓDULO 2: EVENTOS ACTIVOS DEL DÍA SELECCIONADO (Borde Naranja) */}
+      {/* MÓDULO 2: EVENTOS ACTIVOS DEL DÍA SELECCIONADO */}
       {selectedDay !== null && (
-        <View style={styles.cardEventsList}>
+        <View
+          style={[
+            styles.cardEventsList,
+            {
+              borderColor: "#ffffff",
+            },
+          ]}
+        >
           <View
             style={{
               flexDirection: "row",
@@ -536,10 +552,17 @@ export default function CalendarScreen() {
             <Ionicons
               name="location-sharp"
               size={28}
-              color="#ff9800"
+              color="#ffffff"
               style={{ marginRight: 8 }}
             />
-            <Text style={styles.cardTitleEvents}>
+            <Text
+              style={[
+                styles.cardTitleEvents,
+                {
+                  color: "#ffffff",
+                },
+              ]}
+            >
               Eventos para el {selectedDay} de {monthNames[month]}
             </Text>
           </View>
@@ -549,118 +572,135 @@ export default function CalendarScreen() {
               No hay eventos programados para este día.
             </Text>
           ) : (
-            dayEvents.map((ev) => (
-              <TouchableOpacity
-                key={ev.id}
-                style={styles.miniEventBadge}
-                onPress={() => {
-                  setSelectedEventDetails(ev);
-                  setEditingEventTime(ev.time);
-                  setIsEventDetailsModalVisible(true);
-                }}
-              >
-                <View style={styles.eventHeaderRow}>
+            dayEvents.map((ev) => {
+              const leftBorderColor =
+                ev.type === "Ensayo"
+                  ? "#00bcd4"
+                  : ev.type === "Actuación"
+                    ? "#ff9800"
+                    : "#ffffff";
+
+              return (
+                <TouchableOpacity
+                  key={ev.id}
+                  style={[
+                    styles.miniEventBadge,
+                    { borderLeftColor: leftBorderColor },
+                  ]}
+                  onPress={() => {
+                    setSelectedEventDetails(ev);
+                    setEditingEventTime(ev.time);
+                    setIsEventDetailsModalVisible(true);
+                  }}
+                >
+                  <View style={styles.eventHeaderRow}>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        flex: 1,
+                      }}
+                    >
+                      {ev.type === "Ensayo" && (
+                        <Ionicons
+                          name="musical-notes-outline"
+                          size={24}
+                          color="#00bcd4"
+                          style={{ marginRight: 10 }}
+                        />
+                      )}
+                      {ev.type === "Actuación" && (
+                        <Ionicons
+                          name="mic-outline"
+                          size={24}
+                          color="#ff9800"
+                          style={{ marginRight: 10 }}
+                        />
+                      )}
+                      <Text style={styles.miniEventName} numberOfLines={1}>
+                        {ev.name}
+                      </Text>
+                    </View>
+
+                    {/* ACCIONES DE LA TARJETA */}
+                    <View
+                      style={{ flexDirection: "row", alignItems: "center" }}
+                    >
+                      <TouchableOpacity
+                        style={[styles.iconButtonAction, { marginRight: 8 }]}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          setSelectedEventDetails(ev);
+                          setEditingEventTime(ev.time);
+                          setIsEventDetailsModalVisible(true);
+                        }}
+                      >
+                        <Ionicons
+                          name="create-outline"
+                          size={20}
+                          color={ev.type === "Ensayo" ? "#00bcd4" : "#00bcd4"}
+                        />
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.iconButtonAction}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleDeleteEvent(ev.id);
+                        }}
+                      >
+                        <Ionicons
+                          name="trash-outline"
+                          size={20}
+                          color={ev.type === "Ensayo" ? "#00bcd4" : "#ff9800"}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
                   <View
                     style={{
                       flexDirection: "row",
                       alignItems: "center",
-                      flex: 1,
+                      justifyContent: "space-between",
+                      marginTop: 6,
                     }}
                   >
-                    {ev.type === "Ensayo" && (
-                      <Ionicons
-                        name="musical-notes-outline"
-                        size={24}
-                        color="#00bcd4"
-                        style={{ marginRight: 10 }}
-                      />
-                    )}
-                    {ev.type === "Actuación" && (
-                      <Ionicons
-                        name="mic-outline"
-                        size={24}
-                        color="#ff9800"
-                        style={{ marginRight: 10 }}
-                      />
-                    )}
-                    <Text style={styles.miniEventName} numberOfLines={1}>
-                      {ev.name}
-                    </Text>
-                  </View>
-
-                  {/* ACCIONES DE LA TARJETA: EDITAR (Turquesa) Y BORRAR (Naranja) */}
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <TouchableOpacity
-                      style={[styles.iconButtonAction, { marginRight: 8 }]}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        setSelectedEventDetails(ev);
-                        setEditingEventTime(ev.time);
-                        setIsEventDetailsModalVisible(true);
-                      }}
+                    <View
+                      style={{ flexDirection: "row", alignItems: "center" }}
                     >
                       <Ionicons
-                        name="create-outline"
-                        size={20}
+                        name="time-outline"
+                        size={15}
                         color="#00bcd4"
+                        style={{ marginRight: 5 }}
                       />
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={styles.iconButtonAction}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        handleDeleteEvent(ev.id);
-                      }}
+                      <Text style={styles.miniEventTime}>
+                        {ev.time} | 🎵 {ev.songsCount} canciones
+                      </Text>
+                    </View>
+                    <Text
+                      style={[
+                        styles.eventTypeLabelText,
+                        {
+                          color:
+                            ev.type === "Actuación" ? "#ff9800" : "#00bcd4",
+                        },
+                      ]}
                     >
-                      <Ionicons
-                        name="trash-outline"
-                        size={20}
-                        color="#ff9800"
-                      />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    marginTop: 6,
-                  }}
-                >
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Ionicons
-                      name="time-outline"
-                      size={15}
-                      color="#00bcd4"
-                      style={{ marginRight: 5 }}
-                    />
-                    <Text style={styles.miniEventTime}>
-                      {ev.time} | 🎵 {ev.songsCount} canciones
+                      {ev.type}
                     </Text>
                   </View>
-                  <Text
-                    style={[
-                      styles.eventTypeLabelText,
-                      {
-                        color: ev.type === "Actuación" ? "#ff9800" : "#ffffff",
-                      },
-                    ]}
-                  >
-                    {ev.type}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            ))
+                </TouchableOpacity>
+              );
+            })
           )}
         </View>
       )}
 
-      {/* MÓDULO 3: MÓDULO NUEVO E INDEPENDIENTE PARA "AÑADIR EVENTO" (Borde Turquesa) */}
+      {/* MÓDULO 3: MÓDULO NUEVO E INDEPENDIENTE PARA "AÑADIR EVENTO" */}
       {selectedDay !== null && (
-        <View style={styles.cardAddModule}>
+        <View style={[styles.cardAddModule, { borderColor: addModuleColor }]}>
           <View
             style={{
               flexDirection: "row",
@@ -671,10 +711,14 @@ export default function CalendarScreen() {
             <Ionicons
               name="add-circle"
               size={26}
-              color="#00bcd4"
+              color={addModuleColor}
               style={{ marginRight: 8 }}
             />
-            <Text style={styles.cardAddModuleTitle}>Añadir Nuevo Evento</Text>
+            <Text
+              style={[styles.cardAddModuleTitle, { color: addModuleColor }]}
+            >
+              Añadir Nuevo Evento
+            </Text>
           </View>
 
           <Text style={styles.labelSmall}>Nombre del evento:</Text>
@@ -768,13 +812,21 @@ export default function CalendarScreen() {
                     style={styles.miniActionButton}
                     onPress={() => moveSongUp(index)}
                   >
-                    <Ionicons name="chevron-up" size={18} color="#00bcd4" />
+                    <Ionicons
+                      name="chevron-up"
+                      size={18}
+                      color={addModuleColor}
+                    />
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.miniActionButton}
                     onPress={() => moveSongDown(index)}
                   >
-                    <Ionicons name="chevron-down" size={18} color="#00bcd4" />
+                    <Ionicons
+                      name="chevron-down"
+                      size={18}
+                      color={addModuleColor}
+                    />
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.miniActionButton}
@@ -792,7 +844,7 @@ export default function CalendarScreen() {
           })}
 
           <TouchableOpacity
-            style={styles.primaryButton}
+            style={[styles.primaryButton, { backgroundColor: addModuleColor }]}
             onPress={handleSaveEvent}
           >
             <View
@@ -805,10 +857,10 @@ export default function CalendarScreen() {
               <Ionicons
                 name="save-outline"
                 size={20}
-                color="#000"
+                color={eventType === "Otro" ? "#000" : "#000"}
                 style={{ marginRight: 8 }}
               />
-              <Text style={styles.primaryButtonText}>
+              <Text style={[styles.primaryButtonText, { color: "#000" }]}>
                 Guardar Evento en Base de Datos
               </Text>
             </View>
@@ -908,192 +960,219 @@ export default function CalendarScreen() {
         transparent
         animationType="slide"
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                marginBottom: 6,
-              }}
-            >
-              {selectedEventDetails?.type === "Ensayo" && (
-                <Ionicons
-                  name="musical-notes-outline"
-                  size={26}
-                  color="#00bcd4"
-                  style={{ marginRight: 10 }}
-                />
-              )}
-              {selectedEventDetails?.type === "Actuación" && (
-                <Ionicons
-                  name="mic-outline"
-                  size={26}
-                  color="#ff9800"
-                  style={{ marginRight: 10 }}
-                />
-              )}
-              {selectedEventDetails?.type !== "Ensayo" &&
-                selectedEventDetails?.type !== "Actuación" && (
-                  <Ionicons
-                    name="location-outline"
-                    size={26}
-                    color="#ffffff"
-                    style={{ marginRight: 10 }}
-                  />
-                )}
-              <Text style={styles.modalTitleWhite}>
-                {selectedEventDetails?.name}
-              </Text>
-            </View>
+        {(() => {
+          const detailEventType = selectedEventDetails?.type;
+          const detailModalBorderColor =
+            detailEventType === "Ensayo"
+              ? "#00bcd4"
+              : detailEventType === "Actuación"
+                ? "#ff9800"
+                : "#ffffff";
 
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: 4,
-              }}
-            >
-              <Text style={styles.modalDateInfo}>
-                {selectedEventDetails?.dateString}
-              </Text>
-              <Text
+          return (
+            <View style={styles.modalOverlay}>
+              <View
                 style={[
-                  styles.modalTypeBadgeText,
-                  {
-                    color:
-                      selectedEventDetails?.type === "Actuación"
-                        ? "#ff9800"
-                        : selectedEventDetails?.type === "Ensayo"
-                          ? "#00bcd4"
-                          : "#ffffff",
-                  },
+                  styles.modalContent,
+                  { borderColor: detailModalBorderColor },
                 ]}
               >
-                {selectedEventDetails?.type}
-              </Text>
-            </View>
-
-            <View style={styles.editTimeBox}>
-              <Text style={styles.labelSmall}>
-                Modificar hora (Formato HH:MM):
-              </Text>
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      flex: 1,
-                      marginBottom: 0,
-                      marginRight: 8,
-                      padding: 10,
-                      fontSize: 15,
-                    },
-                  ]}
-                  value={editingEventTime}
-                  onChangeText={setEditingEventTime}
-                  placeholder="Ej: 21:15"
-                  placeholderTextColor="#666"
-                  maxLength={5}
-                />
-                <TouchableOpacity
-                  style={styles.updateTimeButton}
-                  onPress={handleUpdateEventTime}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    marginBottom: 6,
+                  }}
                 >
-                  <Text style={styles.updateTimeButtonText}>
-                    Actualizar Hora
+                  {detailEventType === "Ensayo" && (
+                    <Ionicons
+                      name="musical-notes-outline"
+                      size={26}
+                      color="#00bcd4"
+                      style={{ marginRight: 10 }}
+                    />
+                  )}
+                  {detailEventType === "Actuación" && (
+                    <Ionicons
+                      name="mic-outline"
+                      size={26}
+                      color="#ff9800"
+                      style={{ marginRight: 10 }}
+                    />
+                  )}
+                  {detailEventType !== "Ensayo" &&
+                    detailEventType !== "Actuación" && (
+                      <Ionicons
+                        name="location-outline"
+                        size={26}
+                        color="#ffffff"
+                        style={{ marginRight: 10 }}
+                      />
+                    )}
+                  <Text style={styles.modalTitleWhite}>
+                    {selectedEventDetails?.name}
                   </Text>
-                </TouchableOpacity>
+                </View>
+
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: 4,
+                  }}
+                >
+                  <Text style={styles.modalDateInfo}>
+                    {selectedEventDetails?.dateString}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.modalTypeBadgeText,
+                      {
+                        color:
+                          detailEventType === "Actuación"
+                            ? "#ff9800"
+                            : detailEventType === "Ensayo"
+                              ? "#00bcd4"
+                              : "#ffffff",
+                      },
+                    ]}
+                  >
+                    {detailEventType}
+                  </Text>
+                </View>
+
+                <View style={styles.editTimeBox}>
+                  <Text style={styles.labelSmall}>
+                    Modificar hora (Formato HH:MM):
+                  </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        {
+                          flex: 1,
+                          marginBottom: 0,
+                          marginRight: 8,
+                          padding: 10,
+                          fontSize: 15,
+                        },
+                      ]}
+                      value={editingEventTime}
+                      onChangeText={setEditingEventTime}
+                      placeholder="Ej: 21:15"
+                      placeholderTextColor="#666"
+                      maxLength={5}
+                    />
+                    <TouchableOpacity
+                      style={styles.updateTimeButtonWhite}
+                      onPress={handleUpdateEventTime}
+                    >
+                      <Text style={styles.updateTimeButtonWhiteText}>
+                        Actualizar Hora
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <View style={styles.repertoireSectionHeader}>
+                  <Text style={styles.subSectionTitle}>
+                    Repertorio ({selectedEventDetails?.songsCount || 0}{" "}
+                    canciones):
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.addSongButtonWhite}
+                    onPress={() => setIsEditSongModalVisible(true)}
+                  >
+                    <Text style={styles.addSongButtonWhiteText}>
+                      Añadir Canción
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView style={styles.modalScrollList}>
+                  {selectedEventDetails?.songsOrderedList?.length === 0 ? (
+                    <Text style={styles.emptyText}>
+                      Este evento no tiene canciones asociadas. ¡Añade algunas!
+                    </Text>
+                  ) : (
+                    selectedEventDetails?.songsOrderedList?.map(
+                      (song: any, index: number) => (
+                        <View key={song.id || index} style={styles.editSongRow}>
+                          <TouchableOpacity
+                            style={{ flex: 1 }}
+                            onPress={() => {
+                              setSelectedSongDetail(song);
+                              setIsSongDetailModalVisible(true);
+                            }}
+                          >
+                            <Text style={styles.modalSongTitle}>
+                              {index + 1}. {song.title}
+                            </Text>
+                            <Text style={styles.modalSongMetaLarge}>
+                              Tono: {getKeyLabel(song.key)}{" "}
+                              {song.pdf_url ? "| 📄 PDF" : ""}
+                            </Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={styles.removeSongButton}
+                            onPress={() =>
+                              handleRemoveSongFromExistingEvent(song.id)
+                            }
+                          >
+                            <Ionicons
+                              name="close-circle-outline"
+                              size={22}
+                              color="#ff9800"
+                            />
+                          </TouchableOpacity>
+                        </View>
+                      ),
+                    )
+                  )}
+                </ScrollView>
+
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    marginTop: 10,
+                  }}
+                >
+                  <TouchableOpacity
+                    style={[
+                      styles.modalCloseButtonDanger,
+                      { flex: 1, marginRight: 6, marginTop: 0 },
+                    ]}
+                    onPress={() => handleDeleteEvent(selectedEventDetails?.id)}
+                  >
+                    <Text style={styles.modalCloseButtonText}>
+                      Eliminar Evento
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.modalCloseButtonDynamic,
+                      {
+                        flex: 1,
+                        marginLeft: 6,
+                        marginTop: 0,
+                        backgroundColor: detailModalBorderColor,
+                      },
+                    ]}
+                    onPress={() => setIsEventDetailsModalVisible(false)}
+                  >
+                    <Text style={styles.modalCloseButtonDynamicText}>
+                      Cerrar
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
-
-            <View style={styles.repertoireSectionHeader}>
-              <Text style={styles.subSectionTitle}>
-                Repertorio ({selectedEventDetails?.songsCount || 0} canciones):
-              </Text>
-              <TouchableOpacity
-                style={styles.addSongButtonWhite}
-                onPress={() => setIsEditSongModalVisible(true)}
-              >
-                <Text style={styles.addSongButtonWhiteText}>
-                  Añadir Canción
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.modalScrollList}>
-              {selectedEventDetails?.songsOrderedList?.length === 0 ? (
-                <Text style={styles.emptyText}>
-                  Este evento no tiene canciones asociadas. ¡Añade algunas!
-                </Text>
-              ) : (
-                selectedEventDetails?.songsOrderedList?.map(
-                  (song: any, index: number) => (
-                    <View key={song.id || index} style={styles.editSongRow}>
-                      <TouchableOpacity
-                        style={{ flex: 1 }}
-                        onPress={() => {
-                          setSelectedSongDetail(song);
-                          setIsSongDetailModalVisible(true);
-                        }}
-                      >
-                        <Text style={styles.modalSongTitle}>
-                          {index + 1}. {song.title}
-                        </Text>
-                        <Text style={styles.modalSongMetaLarge}>
-                          Tono: {getKeyLabel(song.key)}{" "}
-                          {song.pdf_url ? "| 📄 PDF" : ""}
-                        </Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={styles.removeSongButton}
-                        onPress={() =>
-                          handleRemoveSongFromExistingEvent(song.id)
-                        }
-                      >
-                        <Ionicons
-                          name="close-circle-outline"
-                          size={22}
-                          color="#ff9800"
-                        />
-                      </TouchableOpacity>
-                    </View>
-                  ),
-                )
-              )}
-            </ScrollView>
-
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                marginTop: 10,
-              }}
-            >
-              <TouchableOpacity
-                style={[
-                  styles.modalCloseButtonDanger,
-                  { flex: 1, marginRight: 6, marginTop: 0 },
-                ]}
-                onPress={() => handleDeleteEvent(selectedEventDetails?.id)}
-              >
-                <Text style={styles.modalCloseButtonText}>Eliminar Evento</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.modalCloseButtonOrange,
-                  { flex: 1, marginLeft: 6, marginTop: 0 },
-                ]}
-                onPress={() => setIsEventDetailsModalVisible(false)}
-              >
-                <Text style={styles.modalCloseButtonOrangeText}>Cerrar</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+          );
+        })()}
       </Modal>
 
       {/* MODAL SECUNDARIO: AÑADIR CANCIÓN A EVENTO YA EXISTENTE */}
@@ -1360,7 +1439,6 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 12,
     borderWidth: 1.5,
-    borderColor: "#ff9800",
     marginBottom: 12,
   },
   cardAddModule: {
@@ -1370,13 +1448,11 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 14,
     borderWidth: 2,
-    borderColor: "#00bcd4",
     marginBottom: 12,
   },
   cardAddModuleTitle: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#00bcd4",
   },
   calendarNavHeader: {
     flexDirection: "row",
@@ -1413,20 +1489,31 @@ const styles = StyleSheet.create({
     marginVertical: 1,
     borderWidth: 1,
     borderColor: "#2a2a2a",
+    position: "relative",
   },
   dayCellEmpty: { width: "14%", aspectRatio: 1.0 },
-  cellEnsayo: { borderColor: "#2ecc71", backgroundColor: "#1b3a2b" },
+  cellEnsayo: { borderColor: "#00bcd4", backgroundColor: "#122a2e" },
   cellActuacion: { borderColor: "#ff9800", backgroundColor: "#3a2512" },
   cellOtro: { borderColor: "#fff", backgroundColor: "#121212" },
-  todayCellHighlight: { backgroundColor: "#fff", borderColor: "#fff" },
-  dayCellSelected: { borderWidth: 2, borderColor: "#00bcd4" },
+  dayCellSelected: {
+    backgroundColor: "#4a4a4a",
+    borderWidth: 1,
+    borderColor: "#616161",
+  },
   dayText: { color: "#ccc", fontSize: 14 },
-  todayCellText: { color: "#000", fontWeight: "bold", fontSize: 15 },
-  dayTextSelected: { color: "#fff", fontWeight: "bold" },
+  todayCellText: { color: "#9e9e9e", fontWeight: "bold", fontSize: 22 },
+  todayUnderlineBar: {
+    position: "absolute",
+    bottom: 3,
+    width: "55%",
+    height: 2.5,
+    backgroundColor: "#ffffff",
+    borderRadius: 2,
+  },
+  dayTextSelected: { color: "#ffffff", fontWeight: "bold" },
   cardTitleEvents: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#ff9800",
   },
   subSectionTitle: {
     fontSize: 16,
@@ -1467,7 +1554,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 2,
   },
   typeButtonEnsayoActive: {
-    borderColor: "#00bcd4",
+    borderColor: "#ffffff",
     borderWidth: 2,
   },
   typeButtonActuacionActive: {
@@ -1480,7 +1567,7 @@ const styles = StyleSheet.create({
   },
   typeButtonText: { color: "#aaa", fontSize: 15 },
   typeButtonTextEnsayoActive: {
-    color: "#00bcd4",
+    color: "#ffffff",
     fontWeight: "bold",
     fontSize: 15,
   },
@@ -1534,7 +1621,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   primaryButton: {
-    backgroundColor: "#00bcd4",
     padding: 16,
     borderRadius: 8,
     alignItems: "center",
@@ -1553,7 +1639,6 @@ const styles = StyleSheet.create({
     padding: 18,
     maxHeight: "78%",
     borderWidth: 1,
-    borderColor: "#00bcd4",
   },
   modalTitle: {
     fontSize: 20,
@@ -1588,16 +1673,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#333",
   },
-  updateTimeButton: {
-    backgroundColor: "#ff9800",
+  updateTimeButtonWhite: {
+    backgroundColor: "#ffffff",
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 6,
     justifyContent: "center",
     alignItems: "center",
   },
-  updateTimeButtonText: {
-    color: "#000",
+  updateTimeButtonWhiteText: {
+    color: "#000000",
     fontWeight: "bold",
     fontSize: 13,
   },
@@ -1641,13 +1726,23 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginTop: 4,
   },
+  modalCloseButtonDynamic: {
+    padding: 14,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalCloseButtonDynamicText: {
+    color: "#000000",
+    fontWeight: "bold",
+    fontSize: 15,
+  },
   miniEventBadge: {
     backgroundColor: "#121212",
     padding: 14,
     borderRadius: 6,
     marginBottom: 10,
     borderLeftWidth: 4,
-    borderLeftColor: "#ff9800",
   },
   eventHeaderRow: {
     flexDirection: "row",
@@ -1655,7 +1750,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   miniEventName: { color: "#fff", fontWeight: "bold", fontSize: 17 },
-  miniEventTime: { color: "#00bcd4", fontSize: 15, fontWeight: "600" },
+  miniEventTime: { fontSize: 15, fontWeight: "600", color: "#00bcd4" },
   eventTypeLabelText: { fontSize: 14, fontWeight: "bold" },
   emptyText: {
     color: "#777",
@@ -1706,7 +1801,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   editSongRow: {
-    flexDirection: "row",
+    flexDirection: "qrow",
     alignItems: "center",
     backgroundColor: "#121212",
     padding: 12,

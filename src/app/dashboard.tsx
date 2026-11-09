@@ -21,9 +21,17 @@ const ADMIN_EMAIL = "jorgemaltrago@gmail.com";
 export default function DashboardScreen() {
   const router = useRouter();
   const [bands, setBands] = useState<any[]>([]);
+  const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+
+  // Estados para ver detalles de un evento desde el dashboard
+  const [selectedEventDetails, setSelectedEventDetails] = useState<any | null>(
+    null,
+  );
+  const [isEventDetailsModalVisible, setIsEventDetailsModalVisible] =
+    useState(false);
 
   // Estado para las tareas pendientes del Administrador
   const [adminPendingCount, setAdminPendingCount] = useState(0);
@@ -67,8 +75,7 @@ export default function DashboardScreen() {
   const [isPasswordModalVisible, setIsPasswordModalVisible] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [passwordAlert, setPasswordAlert] = useState<string | null>(null); // Alerta dentro del modal de contraseña
-  // Estados para alternar la visibilidad de las contraseñas (icono del ojo)
+  const [passwordAlert, setPasswordAlert] = useState<string | null>(null);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
@@ -81,6 +88,30 @@ export default function DashboardScreen() {
       setToastMessage(null);
     }, 2500);
   };
+
+  const monthNames = [
+    "Enero",
+    "Febrero",
+    "Marzo",
+    "Abril",
+    "Mayo",
+    "Junio",
+    "Julio",
+    "Agosto",
+    "Septiembre",
+    "Octubre",
+    "Noviembre",
+    "Diciembre",
+  ];
+  const fullWeekDays = [
+    "Lunes",
+    "Martes",
+    "Miércoles",
+    "Jueves",
+    "Viernes",
+    "Sábado",
+    "Domingo",
+  ];
 
   useEffect(() => {
     loadUserDataAndBands();
@@ -117,7 +148,7 @@ export default function DashboardScreen() {
         setEditAvatarUrl(profileData.avatar_url || "");
       }
 
-      // Si es el administrador, consultamos tareas pendientes (activaciones + contraseñas)
+      // Administrador
       if (user.email === ADMIN_EMAIL) {
         const { count: pendingUsersCount } = await supabase
           .from("profiles")
@@ -134,6 +165,7 @@ export default function DashboardScreen() {
         setAdminPendingCount(totalPending);
       }
 
+      // Obtener bandas del usuario
       const { data: memberBands, error: bandError } = await supabase
         .from("band_members")
         .select(
@@ -151,6 +183,62 @@ export default function DashboardScreen() {
           .map((item: any) => item.bands)
           .filter(Boolean);
         setBands(userBands);
+
+        const bandIds = userBands.map((b: any) => b.id);
+        if (bandIds.length > 0) {
+          const todayStr = new Date().toISOString().split("T")[0];
+
+          const { data: eventsData, error: eventError } = await supabase
+            .from("events")
+            .select(
+              `
+              id,
+              name,
+              type,
+              event_date,
+              time,
+              band_id,
+              bands (name, logo_url),
+              event_songs (
+                position,
+                songs (
+                  id,
+                  title
+                )
+              )
+            `,
+            )
+            .in("band_id", bandIds)
+            .gte("event_date", todayStr)
+            .order("event_date", { ascending: true });
+
+          if (!eventError && eventsData) {
+            const formattedEvents = eventsData.map((ev: any) => {
+              const dateObj = new Date(ev.event_date);
+              const sortedSongs = ev.event_songs
+                ? ev.event_songs
+                    .sort((a: any, b: any) => a.position - b.position)
+                    .map((es: any) => es.songs)
+                : [];
+
+              return {
+                id: ev.id,
+                name: ev.name,
+                type: ev.type,
+                bandName: ev.bands?.name || "Banda",
+                bandLogo: ev.bands?.logo_url || null,
+                dateString: `${fullWeekDays[(dateObj.getDay() + 6) % 7]}, ${dateObj.getDate()} de ${monthNames[dateObj.getMonth()]} de ${dateObj.getFullYear()}`,
+                rawDate: ev.event_date,
+                time: ev.time ? ev.time.substring(0, 5) : "20:00",
+                songsCount: sortedSongs.length,
+                songsOrderedList: sortedSongs,
+              };
+            });
+            setUpcomingEvents(formattedEvents);
+          }
+        } else {
+          setUpcomingEvents([]);
+        }
       }
     } catch (error: any) {
       console.error("Error al cargar el dashboard:", error.message);
@@ -327,7 +415,6 @@ export default function DashboardScreen() {
     }
   };
 
-  // Guardar nueva contraseña con aviso interno en el modal si no coinciden
   const handleUpdatePassword = async () => {
     setPasswordAlert(null);
 
@@ -565,7 +652,7 @@ export default function DashboardScreen() {
         ) : null}
       </View>
 
-      {/* BOTÓN / ACCESO DIRECTO AL PANEL DE ADMINISTRACIÓN CON AVISO DE TAREAS PENDIENTES */}
+      {/* BOTÓN / ACCESO DIRECTO AL PANEL DE ADMINISTRACIÓN */}
       {currentUser?.email === ADMIN_EMAIL && (
         <TouchableOpacity
           style={styles.adminAccessButton}
@@ -588,7 +675,6 @@ export default function DashboardScreen() {
             </View>
           </View>
 
-          {/* INSIGNIA DINÁMICA DE TAREAS PENDIENTES */}
           {adminPendingCount > 0 ? (
             <View style={styles.badgeContainer}>
               <Text style={styles.badgeText}>
@@ -698,6 +784,311 @@ export default function DashboardScreen() {
         ))
       )}
 
+      {/* SECCIÓN: PRÓXIMOS EVENTOS DE LAS BANDAS DEL USUARIO */}
+      {bands.length > 0 && (
+        <View style={{ marginTop: 15, marginBottom: 15 }}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              marginBottom: 12,
+            }}
+          >
+            <Ionicons
+              name="calendar-outline"
+              size={22}
+              color="#ff9800"
+              style={{ marginRight: 8 }}
+            />
+            <Text style={styles.headerTitle}>Próximos Eventos</Text>
+          </View>
+
+          {upcomingEvents.length === 0 ? (
+            <Text style={styles.emptyText}>
+              No hay eventos próximos programados para tus bandas.
+            </Text>
+          ) : (
+            upcomingEvents.map((ev) => {
+              // Borde dinámico para la tarjeta según el tipo de evento
+              const cardBorderColor =
+                ev.type === "Actuación"
+                  ? "#ff9800"
+                  : ev.type === "Ensayo"
+                    ? "#00bcd4"
+                    : "#ffffff";
+
+              return (
+                <TouchableOpacity
+                  key={ev.id}
+                  style={[
+                    styles.dashboardEventBadge,
+                    { borderColor: cardBorderColor },
+                  ]}
+                  onPress={() => {
+                    setSelectedEventDetails(ev);
+                    setIsEventDetailsModalVisible(true);
+                  }}
+                >
+                  {/* LÍNEA SUPERIOR (Izquierda: Logo + Nombre y Banda | Derecha: Tipo de evento y Hora en blanco) */}
+                  <View style={styles.eventHeaderRow}>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        flex: 1,
+                        marginRight: 8,
+                      }}
+                    >
+                      {ev.bandLogo ? (
+                        <Image
+                          source={{ uri: ev.bandLogo }}
+                          style={styles.eventBandSmallAvatar}
+                        />
+                      ) : (
+                        <View style={styles.eventBandSmallPlaceholder}>
+                          <Ionicons
+                            name="radio-outline"
+                            size={14}
+                            color="#00bcd4"
+                          />
+                        </View>
+                      )}
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.miniEventName} numberOfLines={1}>
+                          {ev.name}
+                        </Text>
+                        <Text style={styles.dashboardBandTag}>
+                          {ev.bandName}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Derecha: Tipo de evento y hora en blanco justo debajo */}
+                    <View style={{ alignItems: "flex-end" }}>
+                      <Text
+                        style={[
+                          styles.eventTypeLabelText,
+                          {
+                            color:
+                              ev.type === "Actuación"
+                                ? "#ff9800"
+                                : ev.type === "Ensayo"
+                                  ? "#00bcd4"
+                                  : "#ffffff",
+                          },
+                        ]}
+                      >
+                        {ev.type}
+                      </Text>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          marginTop: 4,
+                        }}
+                      >
+                        <Ionicons
+                          name="time-outline"
+                          size={15}
+                          color="#ffffff"
+                          style={{ marginRight: 4 }}
+                        />
+                        <Text style={styles.miniEventTime}>{ev.time}</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* LÍNEA INFERIOR: Fecha limpia y grande a toda su anchura */}
+                  <View style={styles.eventFooterRow}>
+                    <View
+                      style={{ flexDirection: "row", alignItems: "center" }}
+                    >
+                      <Ionicons
+                        name="calendar-clear-outline"
+                        size={17}
+                        color="#00bcd4"
+                        style={{ marginRight: 6 }}
+                      />
+                      <Text style={styles.miniEventDate}>{ev.dateString}</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
+          )}
+        </View>
+      )}
+
+      {/* MODAL: DETALLES DEL EVENTO DESDE EL DASHBOARD */}
+      <Modal
+        visible={isEventDetailsModalVisible}
+        transparent
+        animationType="slide"
+      >
+        {(() => {
+          // Borde dinámico para el modal y color del botón de cerrar según el tipo de evento
+          const eventType = selectedEventDetails?.type;
+          const modalBorderColor =
+            eventType === "Actuación"
+              ? "#ff9800"
+              : eventType === "Ensayo"
+                ? "#00bcd4"
+                : "#ffffff";
+
+          return (
+            <View style={styles.modalOverlay}>
+              <View
+                style={[styles.modalContent, { borderColor: modalBorderColor }]}
+              >
+                {/* CABECERA DEL MODAL: LOGO Y NOMBRE DE LA BANDA EN BLANCO A LA IZQUIERDA, Y TIPO DE EVENTO A LA DERECHA */}
+                <View style={styles.modalBandHeaderRow}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      flex: 1,
+                      marginRight: 8,
+                    }}
+                  >
+                    {selectedEventDetails?.bandLogo ? (
+                      <Image
+                        source={{ uri: selectedEventDetails.bandLogo }}
+                        style={styles.modalBandLogoImage}
+                      />
+                    ) : (
+                      <View style={styles.modalBandLogoPlaceholder}>
+                        <Ionicons
+                          name="radio-outline"
+                          size={18}
+                          color="#00bcd4"
+                        />
+                      </View>
+                    )}
+                    <Text
+                      style={styles.modalBandNameTextWhite}
+                      numberOfLines={1}
+                    >
+                      {selectedEventDetails?.bandName || "Banda"}
+                    </Text>
+                  </View>
+
+                  <Text
+                    style={[
+                      styles.modalTypeBadgeHeader,
+                      {
+                        color:
+                          eventType === "Actuación"
+                            ? "#ff9800"
+                            : eventType === "Ensayo"
+                              ? "#00bcd4"
+                              : "#ffffff",
+                      },
+                    ]}
+                  >
+                    {eventType}
+                  </Text>
+                </View>
+
+                {/* NOMBRE DEL EVENTO */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    marginBottom: 6,
+                  }}
+                >
+                  {eventType === "Ensayo" && (
+                    <Ionicons
+                      name="musical-notes-outline"
+                      size={26}
+                      color="#00bcd4"
+                      style={{ marginRight: 10 }}
+                    />
+                  )}
+                  {eventType === "Actuación" && (
+                    <Ionicons
+                      name="mic-outline"
+                      size={26}
+                      color="#ff9800"
+                      style={{ marginRight: 10 }}
+                    />
+                  )}
+                  {eventType !== "Ensayo" && eventType !== "Actuación" && (
+                    <Ionicons
+                      name="location-outline"
+                      size={26}
+                      color="#ffffff"
+                      style={{ marginRight: 10 }}
+                    />
+                  )}
+                  <Text style={styles.modalTitleWhite}>
+                    {selectedEventDetails?.name}
+                  </Text>
+                </View>
+
+                {/* FECHA Y HORA */}
+                <View style={{ marginBottom: 10 }}>
+                  <Text style={styles.modalDateInfo}>
+                    {selectedEventDetails?.dateString} a las{" "}
+                    {selectedEventDetails?.time}
+                  </Text>
+                </View>
+
+                <Text style={styles.subSectionTitle}>
+                  Repertorio ({selectedEventDetails?.songsCount || 0}{" "}
+                  canciones):
+                </Text>
+
+                <ScrollView style={styles.modalScrollList}>
+                  {selectedEventDetails?.songsOrderedList?.length === 0 ? (
+                    <Text style={styles.emptyText}>
+                      Este evento no tiene canciones asociadas.
+                    </Text>
+                  ) : (
+                    selectedEventDetails?.songsOrderedList?.map(
+                      (song: any, index: number) => (
+                        <View
+                          key={song.id || index}
+                          style={styles.modalSongItemPlain}
+                        >
+                          <Text style={styles.modalSongTitlePlain}>
+                            {index + 1}. {song.title}
+                          </Text>
+                        </View>
+                      ),
+                    )
+                  )}
+                </ScrollView>
+
+                {/* BOTÓN CERRAR DINÁMICO SEGÚN EL TIPO DE EVENTO */}
+                <TouchableOpacity
+                  style={[
+                    styles.modalCloseButtonDynamic,
+                    { backgroundColor: modalBorderColor },
+                  ]}
+                  onPress={() => setIsEventDetailsModalVisible(false)}
+                >
+                  <Text
+                    style={[
+                      styles.modalCloseButtonDynamicText,
+                      {
+                        color:
+                          modalBorderColor === "#ffffff" ||
+                          modalBorderColor === "#00bcd4"
+                            ? "#000"
+                            : "#000",
+                      },
+                    ]}
+                  >
+                    Cerrar
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          );
+        })()}
+      </Modal>
+
       {/* MODAL PARA EDITAR PERFIL */}
       <Modal
         visible={isEditProfileModalVisible}
@@ -791,7 +1182,6 @@ export default function DashboardScreen() {
                 multiline
               />
 
-              {/* BOTÓN PARA ABRIR EL MODAL DE CAMBIO DE CONTRASEÑA */}
               <TouchableOpacity
                 style={styles.secondaryButton}
                 onPress={() => {
@@ -810,7 +1200,6 @@ export default function DashboardScreen() {
                 </Text>
               </TouchableOpacity>
 
-              {/* FILA CON GUARDAR CAMBIOS (AZUL A LA IZQUIERDA) Y CANCELAR (NARANJA A LA DERECHA) */}
               <View style={styles.buttonRowContainer}>
                 <TouchableOpacity
                   style={[
@@ -845,11 +1234,10 @@ export default function DashboardScreen() {
         </View>
       </Modal>
 
-      {/* SUB-MODAL PARA CAMBIAR CONTRASEÑA CON AVISO SUPERIOR */}
+      {/* MODAL CAMBIO DE CONTRASEÑA */}
       <Modal visible={isPasswordModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { borderColor: "#ff9800" }]}>
-            {/* AVISO / MODO ALERTA EN EL CENTRO SUPERIOR DEL MODAL */}
             {passwordAlert && (
               <View style={styles.alertBanner}>
                 <Ionicons
@@ -953,7 +1341,7 @@ export default function DashboardScreen() {
         </View>
       </Modal>
 
-      {/* MODAL PARA CREAR BANDA */}
+      {/* MODAL CREAR BANDA */}
       <Modal visible={isCreateModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <ScrollView contentContainerStyle={{ paddingVertical: 20 }}>
@@ -1033,7 +1421,7 @@ export default function DashboardScreen() {
         </View>
       </Modal>
 
-      {/* MODAL PARA INSERTAR CÓDIGO DE INVITACIÓN */}
+      {/* MODAL UNIRSE POR CÓDIGO */}
       <Modal visible={isCodeModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -1069,7 +1457,7 @@ export default function DashboardScreen() {
         </View>
       </Modal>
 
-      {/* MODAL PARA SELECCIONAR GÉNERO */}
+      {/* MODAL SELECCIONAR GÉNERO */}
       <Modal visible={isGenrePickerVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { width: "80%" }]}>
@@ -1256,6 +1644,44 @@ const styles = StyleSheet.create({
   },
   bandName: { color: "#fff", fontSize: 15, fontWeight: "bold" },
   bandGenre: { color: "#888", fontSize: 12 },
+  dashboardEventBadge: {
+    backgroundColor: "#1e1e1e",
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+  },
+  eventBandSmallAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    marginRight: 8,
+  },
+  eventBandSmallPlaceholder: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#2a2a2a",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 8,
+  },
+  dashboardBandTag: { color: "#aaa", fontSize: 12, marginTop: 1 },
+  eventHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
+  eventFooterRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 10,
+  },
+  miniEventName: { color: "#fff", fontWeight: "bold", fontSize: 16 },
+  miniEventDate: { color: "#ffffff", fontSize: 16, fontWeight: "bold" },
+  miniEventTime: { color: "#ffffff", fontSize: 16, fontWeight: "bold" },
+  eventTypeLabelText: { fontSize: 14, fontWeight: "bold", textAlign: "right" },
   loadingText: {
     color: "#777",
     fontSize: 13,
@@ -1278,8 +1704,75 @@ const styles = StyleSheet.create({
     backgroundColor: "#1e1e1e",
     borderRadius: 12,
     padding: 20,
-    borderWidth: 1.5,
+    borderWidth: 1,
+    maxHeight: "85%",
+  },
+  modalBandHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#333",
+  },
+  modalBandLogoImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginRight: 8,
+  },
+  modalBandLogoPlaceholder: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#2a2a2a",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 8,
+  },
+  modalBandNameTextWhite: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "bold",
+    flex: 1,
+  },
+  modalTypeBadgeHeader: {
+    fontSize: 14,
+    fontWeight: "bold",
+  },
+  modalTitleWhite: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "bold",
+  },
+  modalDateInfo: {
+    color: "#aaa",
+    fontSize: 13,
+  },
+  subSectionTitle: {
+    color: "#bbb",
+    fontSize: 15,
+    fontWeight: "bold",
+    marginTop: 10,
+    marginBottom: 6,
+  },
+  modalScrollList: {
+    maxHeight: 220,
+    marginBottom: 10,
+  },
+  modalSongItemPlain: {
+    backgroundColor: "#121212",
+    padding: 12,
+    borderRadius: 6,
+    marginBottom: 6,
+    borderWidth: 1,
     borderColor: "#333",
+  },
+  modalSongTitlePlain: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "bold",
   },
   modalTitle: {
     color: "#fff",
@@ -1378,6 +1871,16 @@ const styles = StyleSheet.create({
   pickerButtonText: { color: "#fff", fontSize: 14 },
   modalCloseButton: { marginTop: 12, padding: 10, alignItems: "center" },
   modalCloseButtonText: { color: "#888", fontSize: 14 },
+  modalCloseButtonDynamic: {
+    padding: 12,
+    borderRadius: 8,
+    alignItems: "center",
+    marginTop: 10,
+  },
+  modalCloseButtonDynamicText: {
+    fontWeight: "bold",
+    fontSize: 14,
+  },
   buttonRowContainer: {
     flexDirection: "row",
     justifyContent: "space-between",

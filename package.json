@@ -37,6 +37,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.3.0",
+    "electron-packager": "^17.1.2",
     "electron-prebuilt-compile": "8.2.0",
     "typescript": "~6.0.3"
   },

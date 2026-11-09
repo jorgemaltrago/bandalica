@@ -11,8 +11,8 @@ function createWindow() {
     },
   });
 
-  // Carga la versión web estática dentro de la carpeta dist/client
-  mainWindow.loadFile(path.join(__dirname, "dist", "client", "index.html"));
+  // Ruta directa a la versión web estática
+  mainWindow.loadFile("dist/client/index.html");
 }
 
 app.whenReady().then(() => {
