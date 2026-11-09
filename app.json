@@ -20,7 +20,7 @@
       "package": "com.jorgemaltrago.Bandalica"
     },
     "web": {
-      "output": "server",
+      "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
@@ -39,11 +39,7 @@
       "reactCompiler": true
     },
     "extra": {
-      "router": {
-        "asyncRoutes": {
-          "web": true
-        }
-      },
+      "router": {},
       "eas": {
         "projectId": "68a0d843-ee49-4990-b683-6bcfe0e8d7d0"
       }
