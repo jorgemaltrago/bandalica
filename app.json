@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Bandalica",
-    "slug": "Bandalica",
+    "slug": "BandalicaWeb",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./src/assets/logo2.png",
@@ -21,7 +21,8 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "bundler": "metro",
+      "favicon": "./src/assets/logo2.png"
     },
     "plugins": [
       "expo-router",
@@ -29,7 +30,7 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#208AEF",
-          "image": "./assets/images/splash-icon.png",
+          "image": "./src/assets/logo.png",
           "imageWidth": 76
         }
       ]
@@ -39,7 +40,6 @@
       "reactCompiler": true
     },
     "extra": {
-      "router": {},
       "eas": {
         "projectId": "68a0d843-ee49-4990-b683-6bcfe0e8d7d0"
       }

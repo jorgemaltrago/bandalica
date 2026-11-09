@@ -1,5 +1,5 @@
 const { app, BrowserWindow } = require("electron");
-const path = require("path");
+const path = (path = require("path"));
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -11,8 +11,8 @@ function createWindow() {
     },
   });
 
-  // Ruta directa a la versión web estática
-  mainWindow.loadFile("dist/client/index.html");
+  // Carga el archivo index.html utilizando una ruta relativa segura desde el directorio raíz __dirname
+  mainWindow.loadFile(path.join(__dirname, "dist", "index.html"));
 }
 
 app.whenReady().then(() => {

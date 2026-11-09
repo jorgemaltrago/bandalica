@@ -36,6 +36,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.3.0",
+    "electron": "^35.0.0",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -44,7 +45,10 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "build:web": "npx expo export -p web --clear && node ./scripts/fix-html.js",
+    "electron": "electron .",
+    "electron:dev": "npm run build:web && electron ."
   },
   "private": true
 }
