@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Bandalica",
-    "slug": "BandalicaWeb",
+    "slug": "Bandalica",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./src/assets/logo2.png",
@@ -37,7 +37,7 @@
       "expo-sharing"
     ],
     "experiments": {
-      "baseUrl": "/BandalicaWeb",
+      "baseUrl": "/Bandalica",
       "typedRoutes": true,
       "reactCompiler": false
     },
