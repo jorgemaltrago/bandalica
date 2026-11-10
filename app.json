@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Bandalica",
-    "slug": "Bandalica",
+    "slug": "BandalicaWeb",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./src/assets/logo2.png",
@@ -29,17 +29,16 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#000000",
+          "backgroundColor": "#208AEF",
           "image": "./src/assets/logo.png",
-          "imageWidth": 200
+          "imageWidth": 76
         }
-      ],
-      "expo-sharing"
+      ]
     ],
     "experiments": {
-      "baseUrl": "/Bandalica",
+      "baseUrl": "/BandalicaWeb",
       "typedRoutes": true,
-      "reactCompiler": false
+      "reactCompiler": true
     },
     "extra": {
       "eas": {
