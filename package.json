@@ -8,17 +8,17 @@
     "@react-native-async-storage/async-storage": "2.2.0",
     "@supabase/supabase-js": "^2.119.0",
     "expo": "~58.0.23",
-    "expo-clipboard": "~58.0.4",
     "expo-constants": "~58.0.15",
     "expo-device": "~58.0.5",
     "expo-document-picker": "~58.0.4",
-    "expo-file-system": "~58.0.13",
     "expo-font": "~58.0.11",
     "expo-glass-effect": "~58.0.5",
     "expo-image": "~58.0.18",
     "expo-image-picker": "~58.0.10",
     "expo-linking": "~58.0.16",
+    "expo-print": "~58.0.8",
     "expo-router": "~58.0.30",
+    "expo-sharing": "~58.0.22",
     "expo-splash-screen": "~58.0.13",
     "expo-status-bar": "~58.0.4",
     "expo-symbols": "~58.0.4",
@@ -36,19 +36,15 @@
   },
   "devDependencies": {
     "@types/react": "~19.3.0",
-    "electron": "^35.0.0",
     "typescript": "~6.0.3"
   },
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
-    "android": "expo run:android",
-    "ios": "expo run:ios",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint",
-    "build:web": "npx expo export -p web --clear && node ./scripts/fix-html.js",
-    "electron": "electron .",
-    "electron:dev": "npm run build:web && electron ."
+    "lint": "expo lint"
   },
   "private": true
 }

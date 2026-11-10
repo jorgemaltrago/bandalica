@@ -1,0 +1,3 @@
+Este es el contenido de exportar en formato web. Despues de muchos errores de rutas se ha solucuionado usando en app.json la proiedad baseurl="/Bandalica"
+De este modo se camnia la ruta absoluta de los archvivox y componentes y se les asiga /Bandalica/ como directorio raiz
+en github el enlace es https://jorgemaltrago.github.io/BandalicaWeb/  pero el root del usurio es https://jorgemaltrago.github.io/

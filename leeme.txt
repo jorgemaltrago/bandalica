@@ -1,0 +1,2 @@
+Para compilar web hay que tener activo el "experiments" "reactcompiler" : true
+esto esta en el archivo app compilacion web.json

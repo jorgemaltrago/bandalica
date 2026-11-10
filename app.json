@@ -33,12 +33,13 @@
           "image": "./src/assets/logo.png",
           "imageWidth": 76
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "experiments": {
+      "baseUrl": "/BandalicaWeb",
       "typedRoutes": true,
-      "reactCompiler": true,
-      "baseUrl": "/BandalicaWeb"
+      "reactCompiler": false
     },
     "extra": {
       "eas": {

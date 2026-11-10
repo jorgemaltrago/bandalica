@@ -75,20 +75,31 @@ export default function RepertoireScreen() {
     "Flamenco",
   ];
 
+  // Función de validación estricta para formato MM:SS (ej: 03:45 o 3:45)
+  const isValidDurationFormat = (dur: string) => {
+    if (!dur.trim()) return true; // Si está vacío es opcional
+    const regex = /^([0-5]?\d):([0-5]\d)$/;
+    return regex.test(dur.trim());
+  };
+
   // Estados del formulario de creación
   const [newTitle, setNewTitle] = useState("");
+  const [newAuthor, setNewAuthor] = useState("");
   const [newGenre, setNewGenre] = useState("Rock");
   const [newKey, setNewKey] = useState("C");
   const [newTempo, setNewTempo] = useState("");
+  const [newDuration, setNewDuration] = useState("");
   const [newLyrics, setNewLyrics] = useState("");
   const [newPdfFile, setNewPdfFile] = useState<any>(null);
 
   // Estados del formulario de edición
   const [selectedSong, setSelectedSong] = useState<any | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  const [editAuthor, setEditAuthor] = useState("");
   const [editGenre, setEditGenre] = useState("Rock");
   const [editKey, setEditKey] = useState("C");
   const [editTempo, setEditTempo] = useState("");
+  const [editDuration, setEditDuration] = useState("");
   const [editLyrics, setEditLyrics] = useState("");
   const [editPdfFile, setEditPdfFile] = useState<any>(null);
   const [editExistingPdfUrl, setEditExistingPdfUrl] = useState<string | null>(
@@ -181,6 +192,14 @@ export default function RepertoireScreen() {
       return;
     }
 
+    if (!isValidDurationFormat(newDuration)) {
+      Alert.alert(
+        "Formato incorrecto",
+        "La duración debe tener el formato de minutos y segundos MM:SS (ej: 03:45).",
+      );
+      return;
+    }
+
     if (!bandId) {
       Alert.alert("Error", "No se ha detectado el ID de la banda.");
       return;
@@ -198,9 +217,11 @@ export default function RepertoireScreen() {
 
       const songPayload: any = {
         title: newTitle.trim(),
+        author: newAuthor.trim() || null,
         genre: newGenre || "Rock",
         key: newKey || "C",
         tempo: newTempo.trim() || null,
+        duration: newDuration.trim() || null,
         lyrics: newLyrics.trim() || null,
         pdf_url: pdfUrl,
         band_id: bandId,
@@ -217,9 +238,11 @@ export default function RepertoireScreen() {
       if (createError) throw createError;
 
       setNewTitle("");
+      setNewAuthor("");
       setNewGenre("Rock");
       setNewKey("C");
       setNewTempo("");
+      setNewDuration("");
       setNewLyrics("");
       setNewPdfFile(null);
       setIsAddModalVisible(false);
@@ -242,6 +265,14 @@ export default function RepertoireScreen() {
       return;
     }
 
+    if (!isValidDurationFormat(editDuration)) {
+      Alert.alert(
+        "Formato incorrecto",
+        "La duración debe tener el formato de minutos y segundos MM:SS (ej: 03:45).",
+      );
+      return;
+    }
+
     setUploading(true);
     try {
       let pdfUrl = editExistingPdfUrl;
@@ -253,9 +284,11 @@ export default function RepertoireScreen() {
         .from("songs")
         .update({
           title: editTitle.trim(),
+          author: editAuthor.trim() || null,
           genre: editGenre || "Rock",
           key: editKey || "C",
           tempo: editTempo.trim() || null,
+          duration: editDuration.trim() || null,
           lyrics: editLyrics.trim() || null,
           pdf_url: pdfUrl,
         })
@@ -304,9 +337,11 @@ export default function RepertoireScreen() {
   const openEditModal = (song: any) => {
     setSelectedSong(song);
     setEditTitle(song.title || "");
+    setEditAuthor(song.author || "");
     setEditGenre(song.genre || "Rock");
     setEditKey(song.key || "C");
     setEditTempo(song.tempo || "");
+    setEditDuration(song.duration || "");
     setEditLyrics(song.lyrics || "");
     setEditExistingPdfUrl(song.pdf_url || null);
     setEditPdfFile(null);
@@ -379,55 +414,104 @@ export default function RepertoireScreen() {
                 alignItems: "flex-start",
               }}
             >
-              <View style={{ flex: 1 }}>
+              <View style={{ flex: 1, marginRight: 10 }}>
                 <Text style={styles.songTitle}>{song.title}</Text>
-                <Text style={styles.songMeta}>
-                  Tonalidad: {getKeyLabel(song.key)} | Tempo:{" "}
-                  {song.tempo || "N/D"}
-                </Text>
 
-                {/* Botón explícito debajo de la tonalidad y tempo si tiene PDF */}
-                {song.pdf_url && (
+                {song.author ? (
+                  <Text style={styles.songAuthor}>{song.author}</Text>
+                ) : null}
+
+                {/* DURACIÓN VISIBLE EN LA TARJETA */}
+                {song.duration ? (
+                  <Text style={styles.songDurationCard}>
+                    ⏱️ Duración: {song.duration}
+                  </Text>
+                ) : null}
+
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    marginTop: 4,
+                    gap: 8,
+                  }}
+                >
+                  {song.pdf_url && (
+                    <TouchableOpacity
+                      style={styles.pdfBadgeButton}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleOpenPdf(song.pdf_url);
+                      }}
+                    >
+                      <Ionicons
+                        name="document-text"
+                        size={16}
+                        color="#00bcd4"
+                        style={{ marginRight: 4 }}
+                      />
+                      <Text style={styles.pdfBadgeText}>Consultar PDF</Text>
+                    </TouchableOpacity>
+                  )}
+
                   <TouchableOpacity
-                    style={styles.pdfBadgeButton}
+                    style={styles.notesBadgeButton}
                     onPress={(e) => {
                       e.stopPropagation();
-                      handleOpenPdf(song.pdf_url);
+                      openEditModal(song);
                     }}
                   >
                     <Ionicons
-                      name="document-text"
+                      name="reader-outline"
                       size={16}
                       color="#00bcd4"
-                      style={{ marginRight: 6 }}
+                      style={{ marginRight: 4 }}
                     />
-                    <Text style={styles.pdfBadgeText}>Consultar PDF</Text>
+                    <Text style={styles.notesBadgeText}>Notas</Text>
                   </TouchableOpacity>
-                )}
+                </View>
               </View>
 
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  marginTop: 4,
-                }}
-              >
-                <Ionicons
-                  name="create-outline"
-                  size={24}
-                  color="#00bcd4"
-                  style={{ marginRight: 14 }}
-                />
-                <TouchableOpacity
-                  style={styles.iconButtonAction}
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    handleDeleteSong(song.id);
-                  }}
-                >
-                  <Ionicons name="trash-outline" size={24} color="#ff9800" />
-                </TouchableOpacity>
+              <View style={{ alignItems: "flex-end" }}>
+                <View style={styles.rightActionGrid}>
+                  <View style={styles.rightColumnItem}>
+                    <TouchableOpacity
+                      style={styles.iconButtonAction}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        openEditModal(song);
+                      }}
+                    >
+                      <Ionicons
+                        name="create-outline"
+                        size={22}
+                        color="#00bcd4"
+                      />
+                    </TouchableOpacity>
+                    <Text style={styles.songMetaColumn}>
+                      {getKeyLabel(song.key)}
+                    </Text>
+                  </View>
+
+                  <View style={styles.rightColumnItem}>
+                    <TouchableOpacity
+                      style={styles.iconButtonAction}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleDeleteSong(song.id);
+                      }}
+                    >
+                      <Ionicons
+                        name="trash-outline"
+                        size={22}
+                        color="#ff9800"
+                      />
+                    </TouchableOpacity>
+                    <Text style={styles.songMetaColumn}>
+                      {song.tempo ? song.tempo : ""}
+                    </Text>
+                  </View>
+                </View>
               </View>
             </View>
           </TouchableOpacity>
@@ -463,40 +547,84 @@ export default function RepertoireScreen() {
                 onChangeText={setNewTitle}
               />
 
-              <Text style={styles.label}>Género:</Text>
-              <TouchableOpacity
-                style={styles.pickerButton}
-                onPress={() => {
-                  setActiveGenreTarget("new");
-                  setIsGenrePickerVisible(true);
-                }}
-              >
-                <Text style={styles.pickerButtonText}>Género: {newGenre}</Text>
-                <Ionicons name="chevron-down" size={20} color="#00bcd4" />
-              </TouchableOpacity>
-
-              <Text style={styles.label}>Tonalidad:</Text>
-              <TouchableOpacity
-                style={styles.pickerButton}
-                onPress={() => {
-                  setActiveKeyTarget("new");
-                  setIsKeyPickerVisible(true);
-                }}
-              >
-                <Text style={styles.pickerButtonText}>
-                  Nota seleccionada: {getKeyLabel(newKey)}
-                </Text>
-                <Ionicons name="chevron-down" size={20} color="#00bcd4" />
-              </TouchableOpacity>
-
               <TextInput
-                style={[styles.input, { marginTop: 8 }]}
-                placeholder="Tempo (Ej: 120 BPM)"
+                style={styles.input}
+                placeholder="Autor / Intérprete (opcional)"
                 placeholderTextColor="#666"
-                value={newTempo}
-                onChangeText={setNewTempo}
+                value={newAuthor}
+                onChangeText={setNewAuthor}
               />
 
+              {/* FILA: Género, Tonalidad, Tempo y Duración */}
+              <View style={styles.rowTripleContainer}>
+                <View style={styles.rowTripleItem}>
+                  <Text style={styles.labelSmall}>Género:</Text>
+                  <TouchableOpacity
+                    style={styles.pickerButtonCompact}
+                    onPress={() => {
+                      setActiveGenreTarget("new");
+                      setIsGenrePickerVisible(true);
+                    }}
+                  >
+                    <Text
+                      style={styles.pickerButtonTextCompact}
+                      numberOfLines={1}
+                    >
+                      {newGenre}
+                    </Text>
+                    <Ionicons name="chevron-down" size={16} color="#00bcd4" />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.rowTripleItem}>
+                  <Text style={styles.labelSmall}>Tonalidad:</Text>
+                  <TouchableOpacity
+                    style={styles.pickerButtonCompact}
+                    onPress={() => {
+                      setActiveKeyTarget("new");
+                      setIsKeyPickerVisible(true);
+                    }}
+                  >
+                    <Text
+                      style={styles.pickerButtonTextCompact}
+                      numberOfLines={1}
+                    >
+                      {getKeyLabel(newKey)}
+                    </Text>
+                    <Ionicons name="chevron-down" size={16} color="#00bcd4" />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.rowTripleItem}>
+                  <Text style={styles.labelSmall}>Tempo:</Text>
+                  <TextInput
+                    style={styles.inputCompact}
+                    placeholder="BPM"
+                    placeholderTextColor="#666"
+                    keyboardType="numeric"
+                    maxLength={3}
+                    value={newTempo}
+                    onChangeText={setNewTempo}
+                  />
+                </View>
+              </View>
+
+              <View style={{ marginTop: 4, marginBottom: 8 }}>
+                <Text style={styles.labelSmall}>Duración (MM:SS):</Text>
+                <TextInput
+                  style={[styles.input, { marginBottom: 0 }]}
+                  placeholder="Ej: 03:45"
+                  placeholderTextColor="#666"
+                  maxLength={5}
+                  value={newDuration}
+                  onChangeText={setNewDuration}
+                />
+              </View>
+
+              {/* LETRA SITUADA ESTRICTAMENTE AL FINAL DE TODO ANTES DEL PDF */}
+              <Text style={[styles.label, { marginTop: 8 }]}>
+                Letra / Notas (Texto):
+              </Text>
               <TextInput
                 style={[styles.input, { height: 90, textAlignVertical: "top" }]}
                 placeholder="Letra de la canción en texto (opcional)"
@@ -592,42 +720,85 @@ export default function RepertoireScreen() {
                 onChangeText={setEditTitle}
               />
 
-              <Text style={styles.label}>Género:</Text>
-              <TouchableOpacity
-                style={styles.pickerButton}
-                onPress={() => {
-                  setActiveGenreTarget("edit");
-                  setIsGenrePickerVisible(true);
-                }}
-              >
-                <Text style={styles.pickerButtonText}>Género: {editGenre}</Text>
-                <Ionicons name="chevron-down" size={20} color="#00bcd4" />
-              </TouchableOpacity>
-
-              <Text style={styles.label}>Tonalidad:</Text>
-              <TouchableOpacity
-                style={styles.pickerButton}
-                onPress={() => {
-                  setActiveKeyTarget("edit");
-                  setIsKeyPickerVisible(true);
-                }}
-              >
-                <Text style={styles.pickerButtonText}>
-                  Nota seleccionada: {getKeyLabel(editKey)}
-                </Text>
-                <Ionicons name="chevron-down" size={20} color="#00bcd4" />
-              </TouchableOpacity>
-
-              <Text style={[styles.label, { marginTop: 8 }]}>Tempo:</Text>
+              <Text style={styles.label}>Autor / Intérprete:</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Tempo"
+                placeholder="Autor o Intérprete"
                 placeholderTextColor="#666"
-                value={editTempo}
-                onChangeText={setEditTempo}
+                value={editAuthor}
+                onChangeText={setEditAuthor}
               />
 
-              <Text style={styles.label}>Letra / Notas (Texto):</Text>
+              {/* FILA: Género, Tonalidad y Tempo en Edición */}
+              <View style={styles.rowTripleContainer}>
+                <View style={styles.rowTripleItem}>
+                  <Text style={styles.labelSmall}>Género:</Text>
+                  <TouchableOpacity
+                    style={styles.pickerButtonCompact}
+                    onPress={() => {
+                      setActiveGenreTarget("edit");
+                      setIsGenrePickerVisible(true);
+                    }}
+                  >
+                    <Text
+                      style={styles.pickerButtonTextCompact}
+                      numberOfLines={1}
+                    >
+                      {editGenre}
+                    </Text>
+                    <Ionicons name="chevron-down" size={16} color="#00bcd4" />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.rowTripleItem}>
+                  <Text style={styles.labelSmall}>Tonalidad:</Text>
+                  <TouchableOpacity
+                    style={styles.pickerButtonCompact}
+                    onPress={() => {
+                      setActiveKeyTarget("edit");
+                      setIsKeyPickerVisible(true);
+                    }}
+                  >
+                    <Text
+                      style={styles.pickerButtonTextCompact}
+                      numberOfLines={1}
+                    >
+                      {getKeyLabel(editKey)}
+                    </Text>
+                    <Ionicons name="chevron-down" size={16} color="#00bcd4" />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.rowTripleItem}>
+                  <Text style={styles.labelSmall}>Tempo:</Text>
+                  <TextInput
+                    style={styles.inputCompact}
+                    placeholder="BPM"
+                    placeholderTextColor="#666"
+                    keyboardType="numeric"
+                    maxLength={3}
+                    value={editTempo}
+                    onChangeText={setEditTempo}
+                  />
+                </View>
+              </View>
+
+              <View style={{ marginTop: 4, marginBottom: 8 }}>
+                <Text style={styles.labelSmall}>Duración (MM:SS):</Text>
+                <TextInput
+                  style={[styles.input, { marginBottom: 0 }]}
+                  placeholder="Ej: 03:45"
+                  placeholderTextColor="#666"
+                  maxLength={5}
+                  value={editDuration}
+                  onChangeText={setEditDuration}
+                />
+              </View>
+
+              {/* LETRA SITUADA ESTRICTAMENTE AL FINAL DE TODO ANTES DEL PDF */}
+              <Text style={[styles.label, { marginTop: 8 }]}>
+                Letra / Notas (Texto):
+              </Text>
               <TextInput
                 style={[styles.input, { height: 90, textAlignVertical: "top" }]}
                 placeholder="Letra o notas registradas"
@@ -885,9 +1056,36 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "bold",
     fontSize: 18,
+    marginBottom: 2,
+  },
+  songAuthor: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  songDurationCard: {
+    color: "#00bcd4",
+    fontSize: 13,
+    fontWeight: "600",
     marginBottom: 6,
   },
-  songMeta: { color: "#aaa", fontSize: 15, marginBottom: 8 },
+  rightActionGrid: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 16,
+  },
+  rightColumnItem: {
+    alignItems: "center",
+    minWidth: 32,
+  },
+  songMetaColumn: {
+    color: "#aaa",
+    fontSize: 13,
+    fontWeight: "600",
+    marginTop: 8,
+    textAlign: "center",
+  },
   pdfBadgeButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -898,9 +1096,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 6,
     alignSelf: "flex-start",
-    marginTop: 4,
+    marginTop: 2,
   },
   pdfBadgeText: {
+    color: "#00bcd4",
+    fontSize: 13,
+    fontWeight: "bold",
+  },
+  notesBadgeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#121212",
+    borderWidth: 1,
+    borderColor: "#00bcd4",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    alignSelf: "flex-start",
+    marginTop: 2,
+  },
+  notesBadgeText: {
     color: "#00bcd4",
     fontSize: 13,
     fontWeight: "bold",
@@ -939,6 +1154,7 @@ const styles = StyleSheet.create({
     color: "#00bcd4",
   },
   label: { fontSize: 16, color: "#aaa", marginBottom: 6, marginTop: 6 },
+  labelSmall: { fontSize: 13, color: "#aaa", marginBottom: 4, marginTop: 4 },
   input: {
     backgroundColor: "#121212",
     borderWidth: 1,
@@ -949,21 +1165,43 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 10,
   },
-  pickerButton: {
+  inputCompact: {
     backgroundColor: "#121212",
     borderWidth: 1,
     borderColor: "#333",
     borderRadius: 8,
-    padding: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    color: "#fff",
+    fontSize: 15,
+    textAlign: "center",
+    height: 44,
+  },
+  rowTripleContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 8,
+    marginBottom: 6,
+  },
+  rowTripleItem: {
+    flex: 1,
+  },
+  pickerButtonCompact: {
+    backgroundColor: "#121212",
+    borderWidth: 1,
+    borderColor: "#333",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    height: 44,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
   },
-  pickerButtonText: {
+  pickerButtonTextCompact: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "600",
+    flex: 1,
   },
   pdfPickerButton: {
     backgroundColor: "#121212",
