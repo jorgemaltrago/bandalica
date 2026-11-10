@@ -44,6 +44,8 @@ export default function CalendarScreen() {
   const [eventsList, setEventsList] = useState<any[]>([]);
   const [bandName, setBandName] = useState("Nombre de la Banda");
 
+  // Estado temporal compartido para la selección múltiple en modales
+  const [tempSelectedSongs, setTempSelectedSongs] = useState<string[]>([]);
   const [isSongModalVisible, setIsSongModalVisible] = useState(false);
 
   // ESTADOS PARA MODALES INTERACTIVOS DE DETALLE Y EDICIÓN
@@ -60,14 +62,14 @@ export default function CalendarScreen() {
   const [isSongDetailModalVisible, setIsSongDetailModalVisible] =
     useState(false);
 
-  // Modal secundario para añadir canciones a un evento YA existente
+  // Modal unificado para editar canciones en un evento YA existente
   const [isEditSongModalVisible, setIsEditSongModalVisible] = useState(false);
 
   // ESTADOS PARA EL MODAL DE CONFIRMACIÓN DE BORRADO DE EVENTO
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [eventToDeleteId, setEventToDeleteId] = useState<string | null>(null);
 
-  // Estado para el mensaje flotante (Toast) elegante
+  // Estado para el mensaje flotante (Toast)
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -77,7 +79,6 @@ export default function CalendarScreen() {
     }, 2500);
   };
 
-  // Mapeo de notas en inglés a español para mostrar en el calendario igual que en el repertorio
   const musicalKeysMap = [
     { label: "Do", value: "C" },
     { label: "Do#", value: "C#" },
@@ -146,7 +147,7 @@ export default function CalendarScreen() {
         setBandName(data.name);
       }
     } catch (e) {
-      // Ignorar si no existe la tabla bands y mantener valor por defecto
+      // Ignorar
     }
   };
 
@@ -162,7 +163,12 @@ export default function CalendarScreen() {
         .eq("band_id", bandId);
 
       if (!repError && repertoryData) {
-        setBandSongs(repertoryData);
+        const sortedRepertory = repertoryData.sort((a, b) => {
+          const titleA = (a.title || "").toLowerCase();
+          const titleB = (b.title || "").toLowerCase();
+          return titleA.localeCompare(titleB);
+        });
+        setBandSongs(sortedRepertory);
       }
 
       const { data: eventsData, error: eventError } = await supabase
@@ -199,6 +205,7 @@ export default function CalendarScreen() {
             ? ev.event_songs
                 .sort((a: any, b: any) => a.position - b.position)
                 .map((es: any) => es.songs)
+                .filter(Boolean)
             : [];
 
           return {
@@ -216,6 +223,15 @@ export default function CalendarScreen() {
         });
 
         setEventsList(formattedEvents);
+
+        if (selectedEventDetails) {
+          const updatedCurrent = formattedEvents.find(
+            (ev: any) => ev.id === selectedEventDetails.id,
+          );
+          if (updatedCurrent) {
+            setSelectedEventDetails(updatedCurrent);
+          }
+        }
       }
     } catch (error) {
       console.error("Error cargando calendario:", error);
@@ -224,7 +240,6 @@ export default function CalendarScreen() {
     }
   };
 
-  // Función de impresión con márgenes de 10mm arriba/abajo y 20mm en los lados
   const handlePrintSetlist = async () => {
     try {
       const songsHtml =
@@ -283,7 +298,6 @@ export default function CalendarScreen() {
     }
   };
 
-  // Función blindada para sumar la duración estimada (MM:SS) de las canciones
   const calculateTotalDuration = (songsList: any[]) => {
     if (!songsList || songsList.length === 0) return "0 min";
 
@@ -442,38 +456,124 @@ export default function CalendarScreen() {
     }
   };
 
-  const handleAddSongToExistingEvent = async (songId: string) => {
+  const moveSongUp = (index: number) => {
+    if (index === 0) return;
+    const arr = [...selectedSongs];
+    [arr[index], arr[index - 1]] = [arr[index - 1], arr[index]];
+    setSelectedSongs(arr);
+  };
+
+  const moveSongDown = (index: number) => {
+    if (index === selectedSongs.length - 1) return;
+    const arr = [...selectedSongs];
+    [arr[index], arr[index + 1]] = [arr[index + 1], arr[index]];
+    setSelectedSongs(arr);
+  };
+
+  const saveNewSongOrderToSupabase = async (newList: any[]) => {
     if (!selectedEventDetails) return;
     try {
-      const nextPosition = selectedEventDetails.songsOrderedList.length + 1;
-      const { error } = await supabase.from("event_songs").insert([
-        {
+      await supabase
+        .from("event_songs")
+        .delete()
+        .eq("event_id", selectedEventDetails.id);
+
+      if (newList.length > 0) {
+        const payload = newList.map((song, index) => ({
+          event_id: selectedEventDetails.id,
+          song_id: song.id,
+          position: index + 1,
+        }));
+
+        const { error } = await supabase.from("event_songs").insert(payload);
+        if (error) throw error;
+      }
+
+      setSelectedEventDetails({
+        ...selectedEventDetails,
+        songsOrderedList: newList,
+        songsCount: newList.length,
+      });
+
+      await loadCalendarData();
+    } catch (error) {
+      showToast("No se pudo actualizar el orden de las canciones");
+    }
+  };
+
+  const moveEventSongUp = (index: number) => {
+    if (index === 0 || !selectedEventDetails?.songsOrderedList) return;
+    const arr = [...selectedEventDetails.songsOrderedList];
+    [arr[index], arr[index - 1]] = [arr[index - 1], arr[index]];
+    saveNewSongOrderToSupabase(arr);
+  };
+
+  const moveEventSongDown = (index: number) => {
+    if (!selectedEventDetails?.songsOrderedList) return;
+    if (index === selectedEventDetails.songsOrderedList.length - 1) return;
+    const arr = [...selectedEventDetails.songsOrderedList];
+    [arr[index], arr[index + 1]] = [arr[index + 1], arr[index]];
+    saveNewSongOrderToSupabase(arr);
+  };
+
+  const toggleTempSongSelection = (songId: string) => {
+    if (tempSelectedSongs.includes(songId)) {
+      setTempSelectedSongs(tempSelectedSongs.filter((id) => id !== songId));
+    } else {
+      setTempSelectedSongs([...tempSelectedSongs, songId]);
+    }
+  };
+
+  const handleConfirmSongSelection = () => {
+    setSelectedSongs(tempSelectedSongs);
+    setIsSongModalVisible(false);
+  };
+
+  const handleConfirmEditSongSelection = async () => {
+    if (!selectedEventDetails) {
+      setIsEditSongModalVisible(false);
+      return;
+    }
+
+    try {
+      await supabase
+        .from("event_songs")
+        .delete()
+        .eq("event_id", selectedEventDetails.id);
+
+      if (tempSelectedSongs.length > 0) {
+        const eventSongsPayload = tempSelectedSongs.map((songId, index) => ({
           event_id: selectedEventDetails.id,
           song_id: songId,
-          position: nextPosition,
-        },
-      ]);
+          position: index + 1,
+        }));
 
-      if (error) throw error;
+        const { error: insertError } = await supabase
+          .from("event_songs")
+          .insert(eventSongsPayload);
+
+        if (insertError) throw insertError;
+      }
 
       await loadCalendarData();
 
-      const addedSongObj = bandSongs.find((s) => s.id === songId);
-      if (addedSongObj) {
-        const updatedList = [
-          ...selectedEventDetails.songsOrderedList,
-          addedSongObj,
-        ];
-        setSelectedEventDetails({
-          ...selectedEventDetails,
-          songsOrderedList: updatedList,
-          songsCount: updatedList.length,
-        });
-      }
+      const addedSongObjs = bandSongs.filter((s) =>
+        tempSelectedSongs.includes(s.id),
+      );
+      const sortedNewSongs = tempSelectedSongs
+        .map((id) => addedSongObjs.find((s) => s.id === id))
+        .filter(Boolean);
+
+      setSelectedEventDetails({
+        ...selectedEventDetails,
+        songsCount: sortedNewSongs.length,
+        songsOrderedList: sortedNewSongs,
+      });
+
       setIsEditSongModalVisible(false);
-      showToast("Canción añadida al evento");
+      showToast("Repertorio del evento actualizado");
     } catch (error) {
-      showToast("No se pudo añadir la canción");
+      showToast("No se pudieron actualizar las canciones");
     }
   };
 
@@ -525,26 +625,6 @@ export default function CalendarScreen() {
     if (dayEvs.some((ev) => ev.type === "Ensayo")) return "Ensayo";
     if (dayEvs.some((ev) => ev.type === "Actuación")) return "Actuación";
     return "Otro";
-  };
-
-  const handleAddSongToEvent = (songId: string) => {
-    if (!selectedSongs.includes(songId))
-      setSelectedSongs([...selectedSongs, songId]);
-    setIsSongModalVisible(false);
-  };
-
-  const moveSongUp = (index: number) => {
-    if (index === 0) return;
-    const arr = [...selectedSongs];
-    [arr[index], arr[index - 1]] = [arr[index - 1], arr[index]];
-    setSelectedSongs(arr);
-  };
-
-  const moveSongDown = (index: number) => {
-    if (index === selectedSongs.length - 1) return;
-    const arr = [...selectedSongs];
-    [arr[index], arr[index + 1]] = [arr[index + 1], arr[index]];
-    setSelectedSongs(arr);
   };
 
   const dayEvents = selectedDay !== null ? getEventsForDay(selectedDay) : [];
@@ -770,10 +850,12 @@ export default function CalendarScreen() {
                       <Ionicons
                         name="time-outline"
                         size={15}
-                        color="#00bcd4"
+                        color="#ffffff"
                         style={{ marginRight: 5 }}
                       />
-                      <Text style={styles.miniEventTime}>
+                      <Text
+                        style={[styles.miniEventTime, { color: "#ffffff" }]}
+                      >
                         {ev.time} | 🎵 {ev.songsCount} canciones
                       </Text>
                     </View>
@@ -782,7 +864,11 @@ export default function CalendarScreen() {
                         styles.eventTypeLabelText,
                         {
                           color:
-                            ev.type === "Actuación" ? "#ff9800" : "#00bcd4",
+                            ev.type === "Actuación"
+                              ? "#ff9800"
+                              : ev.type === "Ensayo"
+                                ? "#00bcd4"
+                                : "#ffffff",
                         },
                       ]}
                     >
@@ -881,17 +967,24 @@ export default function CalendarScreen() {
           </View>
 
           <View style={styles.repertoireSectionHeader}>
-            <Text style={styles.label}>
+            <Text style={styles.labelSmall}>
               Repertorio ({selectedSongs.length} canciones)
             </Text>
             <TouchableOpacity
-              style={styles.addSongButtonWhite}
+              style={styles.addSongIconButtonWhite}
               onPress={async () => {
-                await loadCalendarData(); // Refresca al abrir el modal
+                await loadCalendarData();
+                setTempSelectedSongs([...selectedSongs]);
                 setIsSongModalVisible(true);
               }}
             >
-              <Text style={styles.addSongButtonWhiteText}>Añadir Canción</Text>
+              <Ionicons
+                name="add"
+                size={18}
+                color="#000000"
+                style={{ marginRight: 4 }}
+              />
+              <Text style={styles.addSongButtonTextUnified}>Canciones</Text>
             </TouchableOpacity>
           </View>
 
@@ -900,11 +993,11 @@ export default function CalendarScreen() {
             if (!songObj) return null;
             return (
               <View key={songId} style={styles.reorderRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.reorderSongText}>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Text style={styles.reorderSongText} numberOfLines={1}>
                     {index + 1}. {songObj.title}
                   </Text>
-                  <Text style={styles.modalSongMeta}>
+                  <Text style={styles.modalSongMeta} numberOfLines={1}>
                     Tono: {getKeyLabel(songObj.key)}
                   </Text>
                 </View>
@@ -915,7 +1008,7 @@ export default function CalendarScreen() {
                   >
                     <Ionicons
                       name="chevron-up"
-                      size={18}
+                      size={20}
                       color={addModuleColor}
                     />
                   </TouchableOpacity>
@@ -925,7 +1018,7 @@ export default function CalendarScreen() {
                   >
                     <Ionicons
                       name="chevron-down"
-                      size={18}
+                      size={20}
                       color={addModuleColor}
                     />
                   </TouchableOpacity>
@@ -937,7 +1030,7 @@ export default function CalendarScreen() {
                       )
                     }
                   >
-                    <Ionicons name="close" size={20} color="#ff9800" />
+                    <Ionicons name="close" size={22} color="#ff9800" />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -969,7 +1062,7 @@ export default function CalendarScreen() {
         </View>
       )}
 
-      {/* MODAL DE SELECCIÓN DE CANCIONES */}
+      {/* MODAL 1 DE SELECCIÓN MÚLTIPLE (EVENTO NUEVO) */}
       <Modal visible={isSongModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -987,7 +1080,7 @@ export default function CalendarScreen() {
                 style={{ marginRight: 8 }}
               />
               <Text style={styles.modalSongHeaderTitleClean}>
-                Añadir Canción al Evento
+                Seleccionar Canciones ({tempSelectedSongs.length})
               </Text>
             </View>
 
@@ -998,16 +1091,15 @@ export default function CalendarScreen() {
                 </Text>
               ) : (
                 bandSongs.map((song) => {
-                  const added = selectedSongs.includes(song.id);
+                  const isChecked = tempSelectedSongs.includes(song.id);
                   return (
                     <TouchableOpacity
                       key={song.id}
                       style={[
                         styles.modalSongItem,
-                        added && styles.modalSongItemDisabled,
+                        isChecked && styles.modalSongItemChecked,
                       ]}
-                      onPress={() => !added && handleAddSongToEvent(song.id)}
-                      disabled={added}
+                      onPress={() => toggleTempSongSelection(song.id)}
                     >
                       <View
                         style={{
@@ -1024,33 +1116,56 @@ export default function CalendarScreen() {
                             Tono: {getKeyLabel(song.key)}
                           </Text>
                         </View>
-                        {added ? (
-                          <Ionicons
-                            name="checkmark-circle"
-                            size={24}
-                            color="#00bcd4"
-                            style={{ marginLeft: 8 }}
-                          />
-                        ) : (
-                          <Ionicons
-                            name="add-circle-outline"
-                            size={24}
-                            color="#00bcd4"
-                            style={{ marginLeft: 8 }}
-                          />
-                        )}
+                        <Ionicons
+                          name={
+                            isChecked ? "radio-button-on" : "radio-button-off"
+                          }
+                          size={24}
+                          color={isChecked ? "#00bcd4" : "#666"}
+                          style={{ marginLeft: 8 }}
+                        />
                       </View>
                     </TouchableOpacity>
                   );
                 })
               )}
             </ScrollView>
-            <TouchableOpacity
-              style={styles.modalCloseButtonOrange}
-              onPress={() => setIsSongModalVisible(false)}
+
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                gap: 8,
+                marginTop: 4,
+              }}
             >
-              <Text style={styles.modalCloseButtonOrangeText}>Volver</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalCloseButtonOrange,
+                  { flex: 1, marginTop: 0 },
+                ]}
+                onPress={() => setIsSongModalVisible(false)}
+              >
+                <Text style={styles.modalCloseButtonOrangeText}>Cancelar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.updateTimeButtonWhite,
+                  { flex: 1, backgroundColor: "#00bcd4" },
+                ]}
+                onPress={handleConfirmSongSelection}
+              >
+                <Text
+                  style={[
+                    styles.updateTimeButtonWhiteText,
+                    { color: "#000", fontSize: 15 },
+                  ]}
+                >
+                  Guardar ({tempSelectedSongs.length})
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1182,14 +1297,25 @@ export default function CalendarScreen() {
                     canciones):
                   </Text>
                   <TouchableOpacity
-                    style={styles.addSongButtonWhite}
+                    style={styles.addSongIconButtonWhite}
                     onPress={async () => {
-                      await loadCalendarData(); // Refresca al abrir el modal secundario
+                      await loadCalendarData();
+                      const currentSongIds =
+                        selectedEventDetails?.songsOrderedList?.map(
+                          (s: any) => s.id,
+                        ) || [];
+                      setTempSelectedSongs(currentSongIds);
                       setIsEditSongModalVisible(true);
                     }}
                   >
-                    <Text style={styles.addSongButtonWhiteText}>
-                      Añadir Canción
+                    <Ionicons
+                      name="add"
+                      size={18}
+                      color="#000000"
+                      style={{ marginRight: 4 }}
+                    />
+                    <Text style={styles.addSongButtonTextUnified}>
+                      Canciones
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -1219,43 +1345,70 @@ export default function CalendarScreen() {
                   ) : (
                     selectedEventDetails?.songsOrderedList?.map(
                       (song: any, index: number) => (
-                        <View key={song.id || index} style={styles.editSongRow}>
+                        <View key={song.id || index} style={styles.reorderRow}>
                           <TouchableOpacity
-                            style={{ flex: 1 }}
+                            style={{ flex: 1, marginRight: 8 }}
                             onPress={() => {
                               setSelectedSongDetail(song);
                               setIsSongDetailModalVisible(true);
                             }}
                           >
-                            <Text style={styles.modalSongTitle}>
+                            <Text
+                              style={styles.reorderSongText}
+                              numberOfLines={1}
+                            >
                               {index + 1}. {song.title}
                             </Text>
-                            <Text style={styles.modalSongMetaLarge}>
+                            <Text
+                              style={styles.modalSongMetaLarge}
+                              numberOfLines={1}
+                            >
                               Tono: {getKeyLabel(song.key)}{" "}
                               {song.duration ? `| ⏱️ ${song.duration}` : ""}{" "}
                               {song.pdf_url ? "| 📄 PDF" : ""}
                             </Text>
                           </TouchableOpacity>
 
-                          <TouchableOpacity
-                            style={styles.removeSongButtonRight}
-                            onPress={() =>
-                              handleRemoveSongFromExistingEvent(song.id)
-                            }
-                          >
-                            <Ionicons
-                              name="close-circle-outline"
-                              size={24}
-                              color="#ff9800"
-                            />
-                          </TouchableOpacity>
+                          <View style={styles.rowActionsRight}>
+                            <TouchableOpacity
+                              style={styles.miniActionButton}
+                              onPress={() => moveEventSongUp(index)}
+                            >
+                              <Ionicons
+                                name="chevron-up"
+                                size={20}
+                                color="#00bcd4"
+                              />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.miniActionButton}
+                              onPress={() => moveEventSongDown(index)}
+                            >
+                              <Ionicons
+                                name="chevron-down"
+                                size={20}
+                                color="#00bcd4"
+                              />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.miniActionButton}
+                              onPress={() =>
+                                handleRemoveSongFromExistingEvent(song.id)
+                              }
+                            >
+                              <Ionicons
+                                name="close"
+                                size={22}
+                                color="#ff9800"
+                              />
+                            </TouchableOpacity>
+                          </View>
                         </View>
                       ),
                     )
                   )}
                 </ScrollView>
 
-                {/* BOTONES INFERIORES: Eliminar (Izq: Rojo), Cerrar (Centro: Turquesa), Imprimir (Der: Blanco) */}
                 <View
                   style={{
                     flexDirection: "row",
@@ -1264,18 +1417,20 @@ export default function CalendarScreen() {
                     gap: 6,
                   }}
                 >
-                  {/* Botón Eliminar (Rojo) */}
                   <TouchableOpacity
                     style={[
                       styles.modalCloseButtonDanger,
-                      { flex: 1, marginTop: 0 },
+                      { flex: 1, marginTop: 0, backgroundColor: "#ff9800" },
                     ]}
                     onPress={() => handleDeleteEvent(selectedEventDetails?.id)}
                   >
-                    <Text style={styles.modalCloseButtonText}>Eliminar</Text>
+                    <Text
+                      style={[styles.modalCloseButtonText, { color: "#000" }]}
+                    >
+                      Eliminar
+                    </Text>
                   </TouchableOpacity>
 
-                  {/* Botón Cerrar (Turquesa #00bcd4) */}
                   <TouchableOpacity
                     style={[
                       styles.modalCloseButtonDynamic,
@@ -1297,7 +1452,6 @@ export default function CalendarScreen() {
                     </Text>
                   </TouchableOpacity>
 
-                  {/* Botón Imprimir (Blanco #ffffff) */}
                   <TouchableOpacity
                     style={[
                       styles.modalCloseButtonDynamic,
@@ -1325,7 +1479,7 @@ export default function CalendarScreen() {
         })()}
       </Modal>
 
-      {/* MODAL SECUNDARIO: AÑADIR CANCIÓN A EVENTO EXISTENTE */}
+      {/* MODAL 2 DE SELECCIÓN MÚLTIPLE PARA EVENTO EXISTENTE (UNIFICADO) */}
       <Modal visible={isEditSongModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -1343,7 +1497,7 @@ export default function CalendarScreen() {
                 style={{ marginRight: 8 }}
               />
               <Text style={styles.modalSongHeaderTitleClean}>
-                Añadir Canción al Evento
+                Seleccionar Canciones ({tempSelectedSongs.length})
               </Text>
             </View>
 
@@ -1354,21 +1508,16 @@ export default function CalendarScreen() {
                 </Text>
               ) : (
                 bandSongs.map((song) => {
-                  const alreadyInEvent =
-                    selectedEventDetails?.songsOrderedList?.some(
-                      (s: any) => s.id === song.id,
-                    );
+                  const isChecked = tempSelectedSongs.includes(song.id);
+
                   return (
                     <TouchableOpacity
                       key={song.id}
                       style={[
                         styles.modalSongItem,
-                        alreadyInEvent && styles.modalSongItemDisabled,
+                        isChecked && styles.modalSongItemChecked,
                       ]}
-                      onPress={() =>
-                        !alreadyInEvent && handleAddSongToExistingEvent(song.id)
-                      }
-                      disabled={alreadyInEvent}
+                      onPress={() => toggleTempSongSelection(song.id)}
                     >
                       <View
                         style={{
@@ -1386,33 +1535,56 @@ export default function CalendarScreen() {
                             {song.duration ? `| ⏱️ ${song.duration}` : ""}
                           </Text>
                         </View>
-                        {alreadyInEvent ? (
-                          <Ionicons
-                            name="checkmark-circle"
-                            size={24}
-                            color="#00bcd4"
-                            style={{ marginLeft: 8 }}
-                          />
-                        ) : (
-                          <Ionicons
-                            name="add-circle-outline"
-                            size={24}
-                            color="#00bcd4"
-                            style={{ marginLeft: 8 }}
-                          />
-                        )}
+                        <Ionicons
+                          name={
+                            isChecked ? "radio-button-on" : "radio-button-off"
+                          }
+                          size={24}
+                          color={isChecked ? "#00bcd4" : "#666"}
+                          style={{ marginLeft: 8 }}
+                        />
                       </View>
                     </TouchableOpacity>
                   );
                 })
               )}
             </ScrollView>
-            <TouchableOpacity
-              style={styles.modalCloseButtonOrange}
-              onPress={() => setIsEditSongModalVisible(false)}
+
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                gap: 8,
+                marginTop: 4,
+              }}
             >
-              <Text style={styles.modalCloseButtonOrangeText}>Volver</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalCloseButtonOrange,
+                  { flex: 1, marginTop: 0 },
+                ]}
+                onPress={() => setIsEditSongModalVisible(false)}
+              >
+                <Text style={styles.modalCloseButtonOrangeText}>Cancelar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.updateTimeButtonWhite,
+                  { flex: 1, backgroundColor: "#00bcd4" },
+                ]}
+                onPress={handleConfirmEditSongSelection}
+              >
+                <Text
+                  style={[
+                    styles.updateTimeButtonWhiteText,
+                    { color: "#000", fontSize: 15 },
+                  ]}
+                >
+                  Guardar ({tempSelectedSongs.length})
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1568,26 +1740,34 @@ export default function CalendarScreen() {
             </Text>
 
             <View
-              style={{ flexDirection: "row", justifyContent: "space-between" }}
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                gap: 8,
+              }}
             >
               <TouchableOpacity
                 style={[
-                  styles.modalCloseButtonOrange,
-                  { flex: 1, marginRight: 6, marginTop: 0 },
+                  styles.modalCloseButtonWhiteStyle,
+                  { flex: 1, marginTop: 0 },
                 ]}
                 onPress={() => setIsDeleteModalVisible(false)}
               >
-                <Text style={styles.modalCloseButtonOrangeText}>Volver</Text>
+                <Text style={styles.modalCloseButtonWhiteStyleText}>
+                  Volver
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={[
                   styles.modalCloseButtonDanger,
-                  { flex: 1, marginLeft: 6, marginTop: 0 },
+                  { flex: 1, marginTop: 0, backgroundColor: "#ff9800" },
                 ]}
                 onPress={confirmDeleteEvent}
               >
-                <Text style={styles.modalCloseButtonText}>Sí, Borrar</Text>
+                <Text style={[styles.modalCloseButtonText, { color: "#000" }]}>
+                  Borrar
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1797,15 +1977,18 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     marginTop: 8,
   },
-  addSongButtonWhite: {
+  addSongIconButtonWhite: {
     backgroundColor: "#ffffff",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    flexDirection: "row",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  addSongButtonWhiteText: {
+  addSongButtonTextUnified: {
     color: "#000000",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "bold",
   },
   reorderRow: {
@@ -1816,11 +1999,13 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 6,
     marginBottom: 8,
+    borderWidth: 1,
+    borderColor: "#2a2a2a",
   },
   reorderSongText: { color: "#fff", fontSize: 16, fontWeight: "600" },
   rowActionsRight: {
     flexDirection: "row",
-    width: 100,
+    width: 110,
     justifyContent: "space-between",
     alignItems: "center",
   },
@@ -1898,7 +2083,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#2a2a2a",
   },
-  modalSongItemDisabled: { opacity: 0.5 },
+  modalSongItemChecked: {
+    borderColor: "#2a2a2a",
+    backgroundColor: "#122a2e",
+  },
   modalSongTitle: { color: "#fff", fontWeight: "bold", fontSize: 17 },
   modalSongMeta: { color: "#aaa", fontSize: 14, marginTop: 3 },
   modalSongMetaLarge: { color: "#bbb", fontSize: 15, marginTop: 3 },
@@ -1916,12 +2104,25 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   modalCloseButtonDanger: {
-    backgroundColor: "#c0392b",
+    backgroundColor: "#ff9800",
     padding: 14,
     borderRadius: 6,
     alignItems: "center",
     justifyContent: "center",
     marginTop: 4,
+  },
+  modalCloseButtonWhiteStyle: {
+    backgroundColor: "#ffffff",
+    padding: 14,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4,
+  },
+  modalCloseButtonWhiteStyleText: {
+    color: "#000000",
+    fontWeight: "bold",
+    fontSize: 15,
   },
   modalCloseButtonDynamic: {
     padding: 14,
@@ -1947,7 +2148,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   miniEventName: { color: "#fff", fontWeight: "bold", fontSize: 17 },
-  miniEventTime: { fontSize: 15, fontWeight: "600", color: "#00bcd4" },
+  miniEventTime: { fontSize: 15, fontWeight: "600", color: "#ffffff" },
   eventTypeLabelText: { fontSize: 14, fontWeight: "bold" },
   emptyText: {
     color: "#777",
@@ -2011,22 +2212,6 @@ const styles = StyleSheet.create({
     color: "#000",
     fontWeight: "bold",
     fontSize: 15,
-  },
-  editSongRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#121212",
-    padding: 12,
-    borderRadius: 6,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "#2a2a2a",
-    justifyContent: "space-between",
-  },
-  removeSongButtonRight: {
-    paddingLeft: 12,
-    justifyContent: "center",
-    alignItems: "center",
   },
   iconButtonAction: {
     padding: 6,

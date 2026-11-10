@@ -4,7 +4,6 @@ import * as DocumentPicker from "expo-document-picker";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-  Alert,
   Linking,
   Modal,
   ScrollView,
@@ -33,6 +32,10 @@ export default function RepertoireScreen() {
   const [activeGenreTarget, setActiveGenreTarget] = useState<"new" | "edit">(
     "new",
   );
+
+  // ESTADO PARA EL MODAL DE CONFIRMACIÓN DE BORRADO DE CANCIÓN
+  const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
+  const [songToDeleteId, setSongToDeleteId] = useState<string | null>(null);
 
   // Estado para el mensaje flotante (Toast)
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -121,7 +124,13 @@ export default function RepertoireScreen() {
 
       if (error) throw error;
       if (data) {
-        setBandSongs(data);
+        // ORDENAR ALFABÉTICAMENTE LAS CANCIONES (A-Z)
+        const sortedRepertory = data.sort((a, b) => {
+          const titleA = (a.title || "").toLowerCase();
+          const titleB = (b.title || "").toLowerCase();
+          return titleA.localeCompare(titleB);
+        });
+        setBandSongs(sortedRepertory);
       }
     } catch (error) {
       console.error("Error cargando repertorio:", error);
@@ -145,7 +154,7 @@ export default function RepertoireScreen() {
         showToast("PDF adjuntado con éxito");
       }
     } catch (error) {
-      Alert.alert("Error", "No se pudo seleccionar el archivo PDF.");
+      showToast("No se pudo seleccionar el archivo PDF.");
     }
   };
 
@@ -156,10 +165,10 @@ export default function RepertoireScreen() {
       if (supported) {
         await Linking.openURL(url);
       } else {
-        Alert.alert("Error", "No se puede abrir este archivo PDF.");
+        showToast("No se puede abrir este archivo PDF.");
       }
     } catch (error) {
-      Alert.alert("Error", "Ocurrió un error al intentar abrir el PDF.");
+      showToast("Ocurrió un error al intentar abrir el PDF.");
     }
   };
 
@@ -188,20 +197,17 @@ export default function RepertoireScreen() {
 
   const handleCreateAndAddSong = async () => {
     if (!newTitle.trim()) {
-      Alert.alert("Campo obligatorio", "Introduce el título de la canción.");
+      showToast("Introduce el título de la canción.");
       return;
     }
 
     if (!isValidDurationFormat(newDuration)) {
-      Alert.alert(
-        "Formato incorrecto",
-        "La duración debe tener el formato de minutos y segundos MM:SS (ej: 03:45).",
-      );
+      showToast("Formato de duración incorrecto (ej: 03:45).");
       return;
     }
 
     if (!bandId) {
-      Alert.alert("Error", "No se ha detectado el ID de la banda.");
+      showToast("No se ha detectado el ID de la banda.");
       return;
     }
 
@@ -250,7 +256,7 @@ export default function RepertoireScreen() {
 
       showToast("Canción añadida correctamente");
     } catch (error: any) {
-      Alert.alert("Error al registrar", error.message);
+      showToast("No se pudo registrar la canción.");
     } finally {
       setUploading(false);
     }
@@ -258,18 +264,12 @@ export default function RepertoireScreen() {
 
   const handleUpdateSong = async () => {
     if (!selectedSong || !editTitle.trim()) {
-      Alert.alert(
-        "Campo obligatorio",
-        "El título de la canción no puede estar vacío.",
-      );
+      showToast("El título de la canción no puede estar vacío.");
       return;
     }
 
     if (!isValidDurationFormat(editDuration)) {
-      Alert.alert(
-        "Formato incorrecto",
-        "La duración debe tener el formato de minutos y segundos MM:SS (ej: 03:45).",
-      );
+      showToast("Formato de duración incorrecto (ej: 03:45).");
       return;
     }
 
@@ -301,37 +301,38 @@ export default function RepertoireScreen() {
 
       showToast("Cambios actualizados correctamente");
     } catch (error: any) {
-      Alert.alert("Error", "No se pudo actualizar la canción.");
+      showToast("No se pudo actualizar la canción.");
     } finally {
       setUploading(false);
     }
   };
 
-  const handleDeleteSong = async (songId: string) => {
-    Alert.alert(
-      "Eliminar canción",
-      "¿Deseas borrar esta canción del repertorio?",
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Borrar",
-          style: "destructive",
-          onPress: async () => {
-            const { error } = await supabase
-              .from("songs")
-              .delete()
-              .eq("id", songId);
-            if (!error) {
-              setBandSongs((prev) => prev.filter((s) => s.id !== songId));
-              setIsEditModalVisible(false);
-              showToast("Canción eliminada");
-            } else {
-              Alert.alert("Error", "No se pudo eliminar la canción.");
-            }
-          },
-        },
-      ],
-    );
+  const promptDeleteSong = (songId: string) => {
+    setSongToDeleteId(songId);
+    setIsDeleteModalVisible(true);
+  };
+
+  const confirmDeleteSong = async () => {
+    if (!songToDeleteId) return;
+
+    try {
+      const { error } = await supabase
+        .from("songs")
+        .delete()
+        .eq("id", songToDeleteId);
+
+      if (!error) {
+        setBandSongs((prev) => prev.filter((s) => s.id !== songToDeleteId));
+        setIsEditModalVisible(false);
+        setIsDeleteModalVisible(false);
+        setSongToDeleteId(null);
+        showToast("Canción eliminada");
+      } else {
+        showToast("No se pudo eliminar la canción.");
+      }
+    } catch (error) {
+      showToast("Error al eliminar la canción.");
+    }
   };
 
   const openEditModal = (song: any) => {
@@ -421,7 +422,6 @@ export default function RepertoireScreen() {
                   <Text style={styles.songAuthor}>{song.author}</Text>
                 ) : null}
 
-                {/* DURACIÓN VISIBLE EN LA TARJETA */}
                 {song.duration ? (
                   <Text style={styles.songDurationCard}>
                     ⏱️ Duración: {song.duration}
@@ -498,7 +498,7 @@ export default function RepertoireScreen() {
                       style={styles.iconButtonAction}
                       onPress={(e) => {
                         e.stopPropagation();
-                        handleDeleteSong(song.id);
+                        promptDeleteSong(song.id);
                       }}
                     >
                       <Ionicons
@@ -555,7 +555,6 @@ export default function RepertoireScreen() {
                 onChangeText={setNewAuthor}
               />
 
-              {/* FILA: Género, Tonalidad, Tempo y Duración */}
               <View style={styles.rowTripleContainer}>
                 <View style={styles.rowTripleItem}>
                   <Text style={styles.labelSmall}>Género:</Text>
@@ -621,7 +620,6 @@ export default function RepertoireScreen() {
                 />
               </View>
 
-              {/* LETRA SITUADA ESTRICTAMENTE AL FINAL DE TODO ANTES DEL PDF */}
               <Text style={[styles.label, { marginTop: 8 }]}>
                 Letra / Notas (Texto):
               </Text>
@@ -634,7 +632,6 @@ export default function RepertoireScreen() {
                 onChangeText={setNewLyrics}
               />
 
-              {/* Selector de PDF en Creación */}
               <Text style={styles.label}>Archivo PDF (Partitura / Letra):</Text>
               <TouchableOpacity
                 style={styles.pdfPickerButton}
@@ -729,7 +726,6 @@ export default function RepertoireScreen() {
                 onChangeText={setEditAuthor}
               />
 
-              {/* FILA: Género, Tonalidad y Tempo en Edición */}
               <View style={styles.rowTripleContainer}>
                 <View style={styles.rowTripleItem}>
                   <Text style={styles.labelSmall}>Género:</Text>
@@ -795,7 +791,6 @@ export default function RepertoireScreen() {
                 />
               </View>
 
-              {/* LETRA SITUADA ESTRICTAMENTE AL FINAL DE TODO ANTES DEL PDF */}
               <Text style={[styles.label, { marginTop: 8 }]}>
                 Letra / Notas (Texto):
               </Text>
@@ -808,7 +803,6 @@ export default function RepertoireScreen() {
                 onChangeText={setEditLyrics}
               />
 
-              {/* Botón directo en edición para consultar el PDF existente */}
               {editExistingPdfUrl && !editPdfFile && (
                 <TouchableOpacity
                   style={styles.consultPdfButton}
@@ -826,7 +820,6 @@ export default function RepertoireScreen() {
                 </TouchableOpacity>
               )}
 
-              {/* Selector de PDF en Edición */}
               <Text style={styles.label}>Cambiar o Adjuntar Archivo PDF:</Text>
               <TouchableOpacity
                 style={styles.pdfPickerButton}
@@ -870,7 +863,7 @@ export default function RepertoireScreen() {
               <TouchableOpacity
                 style={styles.actionBtnDelete}
                 onPress={() =>
-                  selectedSong && handleDeleteSong(selectedSong.id)
+                  selectedSong && promptDeleteSong(selectedSong.id)
                 }
               >
                 <View style={styles.btnContentWithIcon}>
@@ -995,6 +988,79 @@ export default function RepertoireScreen() {
             >
               <Text style={styles.smallBackButtonText}>Volver</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL DE CONFIRMACIÓN PARA BORRAR CANCIÓN (BORRAR EN NARANJA, VOLVER EN BLANCO) */}
+      <Modal visible={isDeleteModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.modalContent,
+              { maxHeight: "30%", borderColor: "#ff9800" },
+            ]}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginBottom: 10,
+              }}
+            >
+              <Ionicons
+                name="warning-outline"
+                size={26}
+                color="#ff9800"
+                style={{ marginRight: 8 }}
+              />
+              <Text
+                style={[
+                  styles.modalTitle,
+                  { color: "#ff9800", marginBottom: 0 },
+                ]}
+              >
+                Eliminar Canción
+              </Text>
+            </View>
+
+            <Text style={{ color: "#fff", fontSize: 16, marginBottom: 20 }}>
+              ¿Deseas borrar esta canción del repertorio definitivamente?
+            </Text>
+
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                gap: 8,
+              }}
+            >
+              {/* BOTÓN VOLVER EN BLANCO CON TEXTO NEGRO */}
+              <TouchableOpacity
+                style={[
+                  styles.modalCloseButtonWhiteStyle,
+                  { flex: 1, marginTop: 0 },
+                ]}
+                onPress={() => setIsDeleteModalVisible(false)}
+              >
+                <Text style={styles.modalCloseButtonWhiteStyleText}>
+                  Volver
+                </Text>
+              </TouchableOpacity>
+
+              {/* BOTÓN BORRAR EN NARANJA */}
+              <TouchableOpacity
+                style={[
+                  styles.modalCloseButtonDanger,
+                  { flex: 1, marginTop: 0, backgroundColor: "#ff9800" },
+                ]}
+                onPress={confirmDeleteSong}
+              >
+                <Text style={[styles.modalCloseButtonText, { color: "#000" }]}>
+                  Borrar
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1321,5 +1387,31 @@ const styles = StyleSheet.create({
   },
   iconButtonAction: {
     padding: 4,
+  },
+  modalCloseButtonDanger: {
+    backgroundColor: "#ff9800",
+    padding: 14,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4,
+  },
+  modalCloseButtonText: {
+    color: "#000",
+    fontWeight: "bold",
+    fontSize: 15,
+  },
+  modalCloseButtonWhiteStyle: {
+    backgroundColor: "#ffffff",
+    padding: 14,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4,
+  },
+  modalCloseButtonWhiteStyleText: {
+    color: "#000000",
+    fontWeight: "bold",
+    fontSize: 15,
   },
 });
