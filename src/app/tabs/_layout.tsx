@@ -37,6 +37,7 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      initialRouteName="calendar" // Se mantiene para abrir el calendario por defecto
       screenOptions={{
         headerShown: true,
         headerStyle: {
@@ -46,7 +47,6 @@ export default function TabLayout() {
           height: 85,
         },
         headerTintColor: "#fff",
-        // Personalizamos el título de la cabecera con la imagen a la izquierda y el nombre a la derecha
         headerTitle: () => (
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             {bandLogo ? (
@@ -78,6 +78,7 @@ export default function TabLayout() {
         },
       }}
     >
+      {/* 1. INFORMACIÓN DE LA BANDA */}
       <Tabs.Screen
         name="band-info"
         options={{
@@ -87,10 +88,11 @@ export default function TabLayout() {
             params: { bandId, userId },
           },
           tabBarIcon: ({ color }) => (
-            <Ionicons name="radio-outline" size={36} color={color} />
+            <Ionicons name="radio-outline" size={32} color={color} />
           ),
         }}
       />
+      {/* 2. CALENDARIO (Abre por defecto) */}
       <Tabs.Screen
         name="calendar"
         options={{
@@ -100,10 +102,11 @@ export default function TabLayout() {
             params: { bandId, userId },
           },
           tabBarIcon: ({ color }) => (
-            <Ionicons name="calendar" size={36} color={color} />
+            <Ionicons name="calendar" size={32} color={color} />
           ),
         }}
       />
+      {/* 3. REPERTORIO */}
       <Tabs.Screen
         name="repertory"
         options={{
@@ -113,10 +116,25 @@ export default function TabLayout() {
             params: { bandId, userId },
           },
           tabBarIcon: ({ color }) => (
-            <Ionicons name="mic" size={36} color={color} />
+            <Ionicons name="mic" size={32} color={color} />
           ),
         }}
       />
+      {/* 4. NOTAS (Nueva pestaña insertada entre Repertorio y Miembros) */}
+      <Tabs.Screen
+        name="notes"
+        options={{
+          title: "Notas",
+          href: {
+            pathname: "/tabs/notes",
+            params: { bandId, userId },
+          },
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="document-text" size={32} color={color} />
+          ),
+        }}
+      />
+      {/* 5. MIEMBROS */}
       <Tabs.Screen
         name="members"
         options={{
@@ -126,7 +144,7 @@ export default function TabLayout() {
             params: { bandId, userId },
           },
           tabBarIcon: ({ color }) => (
-            <Ionicons name="people" size={36} color={color} />
+            <Ionicons name="people" size={32} color={color} />
           ),
         }}
       />

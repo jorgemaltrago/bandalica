@@ -25,22 +25,24 @@ export default function WelcomeScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Estados para el Modal de Aviso Personalizado (Errores / Bienvenida)
+  // Estados para el Modal de Aviso Emergente
   const [isWarningModalVisible, setIsWarningModalVisible] = useState(false);
   const [warningMessage, setWarningMessage] = useState("");
 
-  // Estados para el Modal de Recuperación de Contraseña (con Teléfono y prefijo fijo integrado)
+  // Estados para el Modal de Recuperación de Contraseña
   const [isForgotPasswordModalVisible, setIsForgotPasswordModalVisible] =
     useState(false);
   const [recoveryPhone, setRecoveryPhone] = useState("");
   const [submittingRecovery, setSubmittingRecovery] = useState(false);
+
+  // Estados para el Modal de Política de Uso
+  const [isPolicyModalVisible, setIsPolicyModalVisible] = useState(false);
 
   const showAlertModal = (msg: string) => {
     setWarningMessage(msg);
     setIsWarningModalVisible(true);
   };
 
-  // Comprobar si ya hay una sesión activa de forma segura (dinámica)
   useEffect(() => {
     if (Platform.OS !== "web") {
       checkActiveSession();
@@ -74,7 +76,6 @@ export default function WelcomeScreen() {
     }
   };
 
-  // Función de Iniciar Sesión con validación de is_active y modal personalizado
   const handleLogin = async () => {
     if (!email.trim() || !password) {
       showAlertModal("Por favor, introduce tu correo y contraseña.");
@@ -97,7 +98,7 @@ export default function WelcomeScreen() {
       const user = data.user;
       if (!user) throw new Error("No se pudo obtener el usuario.");
 
-      // 2. Comprobar si está activo en la tabla profiles (excepto si es el admin principal)
+      // 2. Comprobar si está activo en la tabla profiles
       if (trimmedEmail !== ADMIN_EMAIL) {
         const { data: profileData, error: profileError } = await supabase
           .from("profiles")
@@ -122,7 +123,6 @@ export default function WelcomeScreen() {
     }
   };
 
-  // Abrir modal para solicitar contraseña pidiendo el teléfono
   const handleOpenForgotPasswordModal = () => {
     if (!email.trim()) {
       showAlertModal(
@@ -134,7 +134,6 @@ export default function WelcomeScreen() {
     setIsForgotPasswordModalVisible(true);
   };
 
-  // Enviar petición de contraseña junto con el teléfono formateado a Supabase
   const handleConfirmForgotPassword = async () => {
     if (recoveryPhone.length < 9) {
       showAlertModal(
@@ -147,10 +146,8 @@ export default function WelcomeScreen() {
       setSubmittingRecovery(true);
       const { supabase } = await import("@/services/supabase");
 
-      // Unimos de forma fija el prefijo +34 con los 9 dígitos introducidos
       const fullPhone = "+34" + recoveryPhone;
 
-      // Guardamos la petición con el correo y el teléfono completo en la tabla password_requests
       const { error } = await supabase.from("password_requests").insert([
         {
           email: email.trim().toLowerCase(),
@@ -227,7 +224,6 @@ export default function WelcomeScreen() {
           </Text>
         </TouchableOpacity>
 
-        {/* Botón de solicitar recuperación al admin */}
         <TouchableOpacity
           style={styles.forgotPasswordContainer}
           onPress={handleOpenForgotPasswordModal}
@@ -252,12 +248,83 @@ export default function WelcomeScreen() {
         <Text style={styles.authorText}>
           Jorge Martín Cabello{"\n"}© 2026. Todos los derechos reservados.
         </Text>
-        <Text style={styles.testModeText}>Aplicación en modo pruebas</Text>
+        <Text style={styles.testModeText}>Bandalica V1.1</Text>
+
+        {/* ENLACE A POLÍTICA DE USO */}
+        <TouchableOpacity
+          style={{ marginTop: 10 }}
+          onPress={() => setIsPolicyModalVisible(true)}
+        >
+          <Text style={styles.policyLinkText}>
+            Política de Uso y Aviso Legal
+          </Text>
+        </TouchableOpacity>
       </View>
 
-      {/* ========================================================== */}
-      {/* MODAL DE SOLICITUD DE CONTRASEÑA Y TELÉFONO (+34 FIJO) */}
-      {/* ========================================================== */}
+      {/* MODAL DE POLÍTICA DE USO */}
+      <Modal visible={isPolicyModalVisible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: "80%" }]}>
+            <View style={{ alignItems: "center", marginBottom: 8 }}>
+              <Ionicons
+                name="document-text-outline"
+                size={38}
+                color="#00bcd4"
+              />
+            </View>
+            <Text style={[styles.modalTitle, { color: "#00bcd4" }]}>
+              Política de Uso y Aviso Legal
+            </Text>
+
+            <ScrollView style={{ marginBottom: 15, maxHeight: 300 }}>
+              <Text style={styles.policySectionHeader}>
+                1. Naturaleza Privada
+              </Text>
+              <Text style={styles.policyText}>
+                Bandalica es una aplicación privada, de carácter particular y no
+                comercial, desarrollada y mantenida por Jorge Martín Cabello. No
+                tiene fin lucrativo ni se encuentra distribuida en tiendas
+                comerciales. Su uso está limitado exclusivamente al autor y a su
+                círculo íntimo de colaboradores y músicos.
+              </Text>
+
+              <Text style={styles.policySectionHeader}>
+                2. Exoneración de Responsabilidad
+              </Text>
+              <Text style={styles.policyText}>
+                • El uso de la aplicación y el registro de datos, eventos,
+                repertorios o notas se realiza de forma voluntaria y bajo la
+                responsabilidad exclusiva del usuario.{"\n\n"}• El desarrollador
+                no garantiza la disponibilidad ininterrumpida del servicio ni se
+                hace responsable por la pérdida de datos, fallos en el sistema,
+                caídas de la base de datos o incidencias técnicas de cualquier
+                índole.{"\n\n"}• Al tratarse de una herramienta particular, el
+                creador no asume ningún tipo de responsabilidad legal, civil o
+                económica ante los usuarios o terceros por inconvenientes
+                derivados de su utilización.
+              </Text>
+
+              <Text style={styles.policySectionHeader}>3. Aceptación</Text>
+              <Text style={styles.policyText}>
+                El acceso y uso de Bandalica implica la aceptación expresa de
+                esta política y el reconocimiento de la naturaleza privada de la
+                herramienta.
+              </Text>
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.modalBtn, { backgroundColor: "#00bcd4" }]}
+              onPress={() => setIsPolicyModalVisible(false)}
+            >
+              <Text style={[styles.modalBtnText, { color: "#000" }]}>
+                Entendido
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL DE RECUPERACIÓN DE CONTRASEÑA */}
       <Modal
         visible={isForgotPasswordModalVisible}
         transparent
@@ -278,7 +345,6 @@ export default function WelcomeScreen() {
 
             <Text style={styles.inputLabel}>Tu Teléfono / WhatsApp:</Text>
 
-            {/* CAJA INTEGRADA CON EL +34 FIJO Y LOS 9 DÍGITOS */}
             <View style={styles.phoneInputContainer}>
               <Text style={styles.prefixFixedText}>+34</Text>
               <View style={styles.phoneDivider} />
@@ -333,9 +399,7 @@ export default function WelcomeScreen() {
         </View>
       </Modal>
 
-      {/* ========================================================== */}
-      {/* MODAL DE AVISO / ALERTA GENERAL (CON TEXTO "Cerrar" ASEGURADO) */}
-      {/* ========================================================== */}
+      {/* MODAL DE AVISO / ALERTA EMERGENTE GENERAL */}
       <Modal visible={isWarningModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -505,7 +569,26 @@ const styles = StyleSheet.create({
     color: "#00bcd4",
     textAlign: "center",
     marginTop: 4,
-    fontStyle: "italic",
+    fontWeight: "600",
+  },
+  policyLinkText: {
+    fontSize: 13.5,
+    color: "#00bcd4",
+    textAlign: "center",
+    textDecorationLine: "underline",
+    fontWeight: "600",
+  },
+  policySectionHeader: {
+    color: "#00bcd4",
+    fontSize: 14,
+    fontWeight: "bold",
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  policyText: {
+    color: "#ccc",
+    fontSize: 13,
+    lineHeight: 18,
   },
   modalOverlay: {
     flex: 1,

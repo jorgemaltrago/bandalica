@@ -5,8 +5,8 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Image,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -24,7 +24,7 @@ export default function ProfileScreen() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // Datos del formulario de registro y perfil
+  // Datos del formulario
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -32,23 +32,31 @@ export default function ProfileScreen() {
   const [bio, setBio] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
 
-  // Estado para el mensaje flotante (Toast)
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  // Estado para el Modal emergente de aviso
+  const [isWarningModalVisible, setIsWarningModalVisible] = useState(false);
+  const [warningMessage, setWarningMessage] = useState("");
+  const [redirectToLoginOnClose, setRedirectToLoginOnClose] = useState(false);
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 2500);
+  const showAlertModal = (msg: string, shouldRedirect: boolean = false) => {
+    setWarningMessage(msg);
+    setRedirectToLoginOnClose(shouldRedirect);
+    setIsWarningModalVisible(true);
   };
 
-  // Subida opcional de Avatar usando FileSystem Legacy
+  const handleCloseAlertModal = () => {
+    setIsWarningModalVisible(false);
+    if (redirectToLoginOnClose) {
+      router.replace("/" as any);
+    }
+  };
+
+  // Subida opcional de Avatar
   const handlePickAndUploadAvatar = async () => {
     try {
       const permissionResult =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permissionResult.granted) {
-        showToast("Se necesitan permisos para acceder a la galería");
+        showAlertModal("Se necesitan permisos para acceder a la galería.");
         return;
       }
 
@@ -85,7 +93,6 @@ export default function ProfileScreen() {
       }
       const byteArray = new Uint8Array(byteNumbers);
 
-      // Importación dinámica de Supabase para evitar el bloqueo en la nube
       const { supabase } = await import("@/services/supabase");
 
       const { error: uploadError } = await supabase.storage
@@ -103,10 +110,10 @@ export default function ProfileScreen() {
 
       const newAvatarUrl = publicData.publicUrl;
       setAvatarUrl(`${newAvatarUrl}?t=${Date.now()}`);
-      showToast("¡Avatar subido con éxito!");
+      showAlertModal("¡Avatar subido con éxito!");
     } catch (error: any) {
       console.error("Error en la subida del avatar:", error);
-      showToast("Error al subir la imagen.");
+      showAlertModal("Error al subir la imagen de perfil.");
     } finally {
       setUploadingImage(false);
     }
@@ -115,18 +122,17 @@ export default function ProfileScreen() {
   const handleRegisterAndSaveProfile = async () => {
     // Validaciones obligatorias
     if (!email.trim() || !password) {
-      showToast("El correo y la contraseña son obligatorios");
+      showAlertModal("El correo y la contraseña son obligatorios.");
       return;
     }
     if (!fullName.trim()) {
-      showToast("El nombre completo es obligatorio");
+      showAlertModal("El nombre completo es obligatorio.");
       return;
     }
 
     try {
       setLoading(true);
 
-      // Importación dinámica de Supabase para el registro
       const { supabase } = await import("@/services/supabase");
 
       const trimmedEmail = email.trim().toLowerCase();
@@ -143,7 +149,7 @@ export default function ProfileScreen() {
       const user = authData.user;
       if (!user) throw new Error("No se pudo crear el usuario.");
 
-      // 2. Guardar los datos en la tabla profiles con is_active en false (o true si es el admin)
+      // 2. Guardar datos en la tabla profiles
       const { error: profileError } = await supabase.from("profiles").upsert({
         id: user.id,
         email: trimmedEmail,
@@ -151,33 +157,26 @@ export default function ProfileScreen() {
         instrument: instrument.trim() || null,
         bio: bio.trim() || null,
         avatar_url: avatarUrl ? avatarUrl.split("?")[0] : null,
-        is_active: isAdmin, // El admin entra activo, los demás quedan pendientes (false)
+        is_active: isAdmin,
       });
 
       if (profileError) throw profileError;
 
-      // 3. Cerramos sesión inmediatamente para que no se queden dentro sin activar
+      // 3. Cerrar sesión inmediatamente
       await supabase.auth.signOut();
 
-      // 4. Mostrar alerta indicando que debe esperar al administrador
-      Alert.alert(
-        "Cuenta registrada con éxito",
-        "Tus datos se han guardado correctamente. Espera a que el administrador te active la cuenta de usuario para poder loguearte.",
-        [
-          {
-            text: "Entendido",
-            onPress: () => router.replace("/" as any), // Volver al login
-          },
-        ],
+      // 4. Mostrar modal avisando que la cuenta está guardada y pendiente de activación
+      showAlertModal(
+        "Tus datos se han guardado correctamente. Espera a que el administrador te active la cuenta de usuario para poder iniciar sesión.",
+        true,
       );
     } catch (error: any) {
       console.error("Error en el registro:", error);
 
-      // Control amigable si el usuario ya está registrado en Supabase Auth[cite: 1]
       if (error.message?.includes("User already registered")) {
-        showToast("Este correo ya está registrado. Inicia sesión.");
+        showAlertModal("Este correo ya está registrado. Inicia sesión.");
       } else {
-        showToast(error.message || "No se pudo completar el registro");
+        showAlertModal(error.message || "No se pudo completar el registro.");
       }
     } finally {
       setLoading(false);
@@ -186,18 +185,6 @@ export default function ProfileScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      {toastMessage && (
-        <View style={styles.toastContainer}>
-          <Ionicons
-            name="checkmark-circle"
-            size={20}
-            color="#00bcd4"
-            style={{ marginRight: 8 }}
-          />
-          <Text style={styles.toastText}>{toastMessage}</Text>
-        </View>
-      )}
-
       <View style={styles.cardHeader}>
         <Text style={styles.cardTitle}>👤 Registro de Cuenta</Text>
 
@@ -303,6 +290,28 @@ export default function ProfileScreen() {
           </Text>
         </TouchableOpacity>
       </View>
+
+      {/* ========================================================== */}
+      {/* MODAL DE AVISO / CONFIRMACIÓN EMERGENTE */}
+      {/* ========================================================== */}
+      <Modal visible={isWarningModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={{ alignItems: "center", marginBottom: 10 }}>
+              <Ionicons name="alert-circle-outline" size={42} color="#ff9800" />
+            </View>
+            <Text style={[styles.modalTitle, { color: "#ff9800" }]}>Aviso</Text>
+            <Text style={styles.modalDesc}>{warningMessage}</Text>
+
+            <TouchableOpacity
+              style={[styles.modalBtn, { backgroundColor: "#ff9800" }]}
+              onPress={handleCloseAlertModal}
+            >
+              <Text style={styles.modalBtnText}>Entendido</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -313,23 +322,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#121212",
     padding: 20,
     justifyContent: "center",
-  },
-  toastContainer: {
-    backgroundColor: "#1e1e1e",
-    borderWidth: 1,
-    borderColor: "#00bcd4",
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 15,
-    alignSelf: "center",
-    width: "100%",
-  },
-  toastText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
   },
   cardHeader: {
     backgroundColor: "#1e1e1e",
@@ -435,5 +427,48 @@ const styles = StyleSheet.create({
   backLoginText: {
     color: "#aaa",
     fontSize: 14,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.8)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  modalContent: {
+    backgroundColor: "#1e1e1e",
+    borderRadius: 12,
+    padding: 24,
+    borderWidth: 1.5,
+    borderColor: "#ff9800",
+    width: "88%",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    textAlign: "center",
+    marginBottom: 10,
+  },
+  modalDesc: {
+    color: "#aaa",
+    fontSize: 13.5,
+    marginBottom: 20,
+    textAlign: "center",
+    lineHeight: 19,
+  },
+  modalBtn: {
+    backgroundColor: "#ff9800",
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    alignItems: "center",
+    width: "100%",
+    justifyContent: "center",
+  },
+  modalBtnText: {
+    color: "#000",
+    fontWeight: "bold",
+    fontSize: 16,
+    textAlign: "center",
   },
 });

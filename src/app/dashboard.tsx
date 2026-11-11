@@ -209,17 +209,18 @@ export default function DashboardScreen() {
             `,
             )
             .in("band_id", bandIds)
-            .gte("event_date", todayStr)
-            .order("event_date", { ascending: true });
+            .gte("event_date", todayStr);
 
           if (!eventError && eventsData) {
             const formattedEvents = eventsData.map((ev: any) => {
-              const dateObj = new Date(ev.event_date);
+              const dateObj = new Date(ev.event_date + "T00:00:00");
               const sortedSongs = ev.event_songs
                 ? ev.event_songs
                     .sort((a: any, b: any) => a.position - b.position)
                     .map((es: any) => es.songs)
                 : [];
+
+              const isToday = ev.event_date === todayStr;
 
               return {
                 id: ev.id,
@@ -227,13 +228,24 @@ export default function DashboardScreen() {
                 type: ev.type,
                 bandName: ev.bands?.name || "Banda",
                 bandLogo: ev.bands?.logo_url || null,
-                dateString: `${fullWeekDays[(dateObj.getDay() + 6) % 7]}, ${dateObj.getDate()} de ${monthNames[dateObj.getMonth()]} de ${dateObj.getFullYear()}`,
+                dateString: isToday
+                  ? "¡Hoy!"
+                  : `${fullWeekDays[(dateObj.getDay() + 6) % 7]}, ${dateObj.getDate()} de ${monthNames[dateObj.getMonth()]} de ${dateObj.getFullYear()}`,
                 rawDate: ev.event_date,
                 time: ev.time ? ev.time.substring(0, 5) : "20:00",
                 songsCount: sortedSongs.length,
                 songsOrderedList: sortedSongs,
               };
             });
+
+            // ORDENACIÓN: Primero por fecha (ascendente, más cercanos primero) y luego por hora
+            formattedEvents.sort((a: any, b: any) => {
+              if (a.rawDate !== b.rawDate) {
+                return a.rawDate.localeCompare(b.rawDate);
+              }
+              return a.time.localeCompare(b.time);
+            });
+
             setUpcomingEvents(formattedEvents);
           }
         } else {
@@ -559,7 +571,7 @@ export default function DashboardScreen() {
     }
 
     router.push({
-      pathname: "/tabs/band-info" as any,
+      pathname: "/tabs/calendar" as any, // <--- Modificado aquí para abrir directamente el Calendario
       params: {
         bandId: bandId,
         userId: currentUser.id,
@@ -809,7 +821,6 @@ export default function DashboardScreen() {
             </Text>
           ) : (
             upcomingEvents.map((ev) => {
-              // Borde dinámico para la tarjeta según el tipo de evento
               const cardBorderColor =
                 ev.type === "Actuación"
                   ? "#ff9800"
@@ -829,7 +840,6 @@ export default function DashboardScreen() {
                     setIsEventDetailsModalVisible(true);
                   }}
                 >
-                  {/* LÍNEA SUPERIOR (Izquierda: Logo + Nombre y Banda | Derecha: Tipo de evento y Hora en blanco) */}
                   <View style={styles.eventHeaderRow}>
                     <View
                       style={{
@@ -863,7 +873,6 @@ export default function DashboardScreen() {
                       </View>
                     </View>
 
-                    {/* Derecha: Tipo de evento y hora en blanco justo debajo */}
                     <View style={{ alignItems: "flex-end" }}>
                       <Text
                         style={[
@@ -898,7 +907,6 @@ export default function DashboardScreen() {
                     </View>
                   </View>
 
-                  {/* LÍNEA INFERIOR: Fecha limpia y grande a toda su anchura */}
                   <View style={styles.eventFooterRow}>
                     <View
                       style={{ flexDirection: "row", alignItems: "center" }}
@@ -919,14 +927,13 @@ export default function DashboardScreen() {
         </View>
       )}
 
-      {/* MODAL: DETALLES DEL EVENTO DESDE EL DASHBOARD */}
+      {/* MODAL: DETALLES DEL EVENTO */}
       <Modal
         visible={isEventDetailsModalVisible}
         transparent
         animationType="slide"
       >
         {(() => {
-          // Borde dinámico para el modal y color del botón de cerrar según el tipo de evento
           const eventType = selectedEventDetails?.type;
           const modalBorderColor =
             eventType === "Actuación"
@@ -940,7 +947,6 @@ export default function DashboardScreen() {
               <View
                 style={[styles.modalContent, { borderColor: modalBorderColor }]}
               >
-                {/* CABECERA DEL MODAL: LOGO Y NOMBRE DE LA BANDA EN BLANCO A LA IZQUIERDA, Y TIPO DE EVENTO A LA DERECHA */}
                 <View style={styles.modalBandHeaderRow}>
                   <View
                     style={{
@@ -989,7 +995,6 @@ export default function DashboardScreen() {
                   </Text>
                 </View>
 
-                {/* NOMBRE DEL EVENTO */}
                 <View
                   style={{
                     flexDirection: "row",
@@ -1026,7 +1031,6 @@ export default function DashboardScreen() {
                   </Text>
                 </View>
 
-                {/* FECHA Y HORA */}
                 <View style={{ marginBottom: 10 }}>
                   <Text style={styles.modalDateInfo}>
                     {selectedEventDetails?.dateString} a las{" "}
@@ -1060,7 +1064,6 @@ export default function DashboardScreen() {
                   )}
                 </ScrollView>
 
-                {/* BOTÓN CERRAR DINÁMICO SEGÚN EL TIPO DE EVENTO */}
                 <TouchableOpacity
                   style={[
                     styles.modalCloseButtonDynamic,
@@ -1071,13 +1074,7 @@ export default function DashboardScreen() {
                   <Text
                     style={[
                       styles.modalCloseButtonDynamicText,
-                      {
-                        color:
-                          modalBorderColor === "#ffffff" ||
-                          modalBorderColor === "#00bcd4"
-                            ? "#000"
-                            : "#000",
-                      },
+                      { color: "#000" },
                     ]}
                   >
                     Cerrar

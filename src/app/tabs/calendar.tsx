@@ -37,6 +37,7 @@ export default function CalendarScreen() {
   const [eventName, setEventName] = useState("");
   const [eventType, setEventType] = useState("Ensayo");
   const [eventTime, setEventTime] = useState("20:00");
+  const [eventNotes, setEventNotes] = useState("");
 
   // Listas de datos desde Supabase
   const [bandSongs, setBandSongs] = useState<any[]>([]);
@@ -55,6 +56,7 @@ export default function CalendarScreen() {
   const [isEventDetailsModalVisible, setIsEventDetailsModalVisible] =
     useState(false);
   const [editingEventTime, setEditingEventTime] = useState("20:00");
+  const [editingEventNotes, setEditingEventNotes] = useState("");
 
   const [selectedSongDetail, setSelectedSongDetail] = useState<any | null>(
     null,
@@ -180,6 +182,7 @@ export default function CalendarScreen() {
           type,
           event_date,
           time,
+          notes,
           event_songs (
             position,
             songs (
@@ -212,14 +215,24 @@ export default function CalendarScreen() {
             id: ev.id,
             name: ev.name,
             type: ev.type,
+            rawDate: ev.event_date, // Para ordenación estricta por fecha
             day: dateObj.getDate(),
             month: dateObj.getMonth(),
             year: dateObj.getFullYear(),
             dateString: `${fullWeekDays[(dateObj.getDay() + 6) % 7]}, ${dateObj.getDate()} de ${monthNames[dateObj.getMonth()]} de ${dateObj.getFullYear()}`,
             time: ev.time ? ev.time.substring(0, 5) : "20:00",
+            notes: ev.notes || "",
             songsCount: sortedSongs.length,
             songsOrderedList: sortedSongs,
           };
+        });
+
+        // NUEVO: Ordenar eventos primero por fecha y luego por hora
+        formattedEvents.sort((a: any, b: any) => {
+          if (a.rawDate !== b.rawDate) {
+            return a.rawDate.localeCompare(b.rawDate);
+          }
+          return a.time.localeCompare(b.time);
         });
 
         setEventsList(formattedEvents);
@@ -256,6 +269,10 @@ export default function CalendarScreen() {
               .join("")
           : '<p style="font-size: 20px; font-style: italic; color: #777; padding-left: 35px;">No hay canciones en este evento.</p>';
 
+      const notesHtml = selectedEventDetails?.notes
+        ? `<div style="margin-top: 20px; font-size: 18px; text-align: left; background: #f4f4f4; padding: 10px; border-radius: 5px;"><strong>Anotaciones:</strong> ${selectedEventDetails.notes}</div>`
+        : "";
+
       const htmlContent = `
         <html>
           <head>
@@ -287,6 +304,7 @@ export default function CalendarScreen() {
             <div class="list-container">
               ${songsHtml}
             </div>
+            ${notesHtml}
           </body>
         </html>
       `;
@@ -371,6 +389,7 @@ export default function CalendarScreen() {
             type: eventType,
             event_date: dateStringDB,
             time: eventTime.trim(),
+            notes: eventNotes.trim() || null,
             ...(userId ? { created_by: userId } : {}),
           },
         ])
@@ -390,6 +409,7 @@ export default function CalendarScreen() {
       }
 
       setEventName("");
+      setEventNotes("");
       setSelectedSongs([]);
       await loadCalendarData();
       showToast("Evento guardado correctamente");
@@ -398,7 +418,7 @@ export default function CalendarScreen() {
     }
   };
 
-  const handleUpdateEventTime = async () => {
+  const handleUpdateEventTimeAndNotes = async () => {
     if (!selectedEventDetails) return;
 
     if (!isValidTimeFormat(editingEventTime)) {
@@ -409,7 +429,10 @@ export default function CalendarScreen() {
     try {
       const { error } = await supabase
         .from("events")
-        .update({ time: editingEventTime.trim() })
+        .update({
+          time: editingEventTime.trim(),
+          notes: editingEventNotes.trim() || null,
+        })
         .eq("id", selectedEventDetails.id);
 
       if (error) throw error;
@@ -417,11 +440,12 @@ export default function CalendarScreen() {
       setSelectedEventDetails({
         ...selectedEventDetails,
         time: editingEventTime.trim(),
+        notes: editingEventNotes.trim(),
       });
       await loadCalendarData();
-      showToast("Hora actualizada");
+      showToast("Evento actualizado correctamente");
     } catch (error) {
-      showToast("No se pudo actualizar la hora");
+      showToast("No se pudo actualizar el evento");
     }
   };
 
@@ -759,6 +783,12 @@ export default function CalendarScreen() {
                     ? "#ff9800"
                     : "#ffffff";
 
+              // Comprobar si el evento coincide exactamente con la fecha actual del sistema
+              const isEventToday =
+                ev.day === currentDayToday &&
+                ev.month === currentMonthToday &&
+                ev.year === currentYearToday;
+
               return (
                 <TouchableOpacity
                   key={ev.id}
@@ -769,6 +799,7 @@ export default function CalendarScreen() {
                   onPress={() => {
                     setSelectedEventDetails(ev);
                     setEditingEventTime(ev.time);
+                    setEditingEventNotes(ev.notes || "");
                     setIsEventDetailsModalVisible(true);
                   }}
                 >
@@ -810,6 +841,7 @@ export default function CalendarScreen() {
                           e.stopPropagation();
                           setSelectedEventDetails(ev);
                           setEditingEventTime(ev.time);
+                          setEditingEventNotes(ev.notes || "");
                           setIsEventDetailsModalVisible(true);
                         }}
                       >
@@ -853,10 +885,12 @@ export default function CalendarScreen() {
                         color="#ffffff"
                         style={{ marginRight: 5 }}
                       />
+                      {/* NUEVO: Muestra la hora y, si es hoy, añade "¡Hoy!" */}
                       <Text
                         style={[styles.miniEventTime, { color: "#ffffff" }]}
                       >
-                        {ev.time} | 🎵 {ev.songsCount} canciones
+                        {ev.time} {isEventToday ? "| 🚨 ¡Hoy!" : ""} | 🎵{" "}
+                        {ev.songsCount} canciones
                       </Text>
                     </View>
                     <Text
@@ -924,6 +958,16 @@ export default function CalendarScreen() {
             value={eventTime}
             onChangeText={setEventTime}
             maxLength={5}
+          />
+
+          <Text style={styles.labelSmall}>Anotaciones (opcional):</Text>
+          <TextInput
+            style={[styles.input, { height: 80, textAlignVertical: "top" }]}
+            placeholder="Ej: Traer uniforme de gala, llegar 15 min antes..."
+            placeholderTextColor="#666"
+            value={eventNotes}
+            onChangeText={setEventNotes}
+            multiline
           />
 
           <Text style={styles.labelSmall}>Tipo de evento:</Text>
@@ -1170,7 +1214,7 @@ export default function CalendarScreen() {
         </View>
       </Modal>
 
-      {/* MODAL 1: DETALLES DEL EVENTO */}
+      {/* MODAL 1: DETALLES Y EDICIÓN DEL EVENTO */}
       <Modal
         visible={isEventDetailsModalVisible}
         transparent
@@ -1258,37 +1302,52 @@ export default function CalendarScreen() {
                   </Text>
                 </View>
 
+                {/* BLOQUE DE EDICIÓN DE HORA Y ANOTACIONES */}
                 <View style={styles.editTimeBox}>
-                  <Text style={styles.labelSmall}>
-                    Modificar hora (Formato HH:MM):
-                  </Text>
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <TextInput
-                      style={[
-                        styles.input,
-                        {
-                          flex: 1,
-                          marginBottom: 0,
-                          marginRight: 8,
-                          padding: 10,
-                          fontSize: 15,
-                        },
-                      ]}
-                      value={editingEventTime}
-                      onChangeText={setEditingEventTime}
-                      placeholder="Ej: 21:15"
-                      placeholderTextColor="#666"
-                      maxLength={5}
-                    />
-                    <TouchableOpacity
-                      style={styles.updateTimeButtonWhite}
-                      onPress={handleUpdateEventTime}
-                    >
-                      <Text style={styles.updateTimeButtonWhiteText}>
-                        Actualizar Hora
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
+                  <Text style={styles.labelSmall}>Hora (HH:MM):</Text>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      {
+                        marginBottom: 8,
+                        padding: 10,
+                        fontSize: 15,
+                      },
+                    ]}
+                    value={editingEventTime}
+                    onChangeText={setEditingEventTime}
+                    placeholder="Ej: 21:15"
+                    placeholderTextColor="#666"
+                    maxLength={5}
+                  />
+
+                  <Text style={styles.labelSmall}>Anotaciones del evento:</Text>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      {
+                        height: 70,
+                        textAlignVertical: "top",
+                        marginBottom: 8,
+                        padding: 10,
+                        fontSize: 15,
+                      },
+                    ]}
+                    value={editingEventNotes}
+                    onChangeText={setEditingEventNotes}
+                    placeholder="Añade notas..."
+                    placeholderTextColor="#666"
+                    multiline
+                  />
+
+                  <TouchableOpacity
+                    style={styles.updateTimeButtonWhite}
+                    onPress={handleUpdateEventTimeAndNotes}
+                  >
+                    <Text style={styles.updateTimeButtonWhiteText}>
+                      Guardar Cambios de Hora / Anotaciones
+                    </Text>
+                  </TouchableOpacity>
                 </View>
 
                 <View style={styles.repertoireSectionHeader}>
@@ -1479,7 +1538,7 @@ export default function CalendarScreen() {
         })()}
       </Modal>
 
-      {/* MODAL 2 DE SELECCIÓN MÚLTIPLE PARA EVENTO EXISTENTE (UNIFICADO) */}
+      {/* MODAL 2 DE SELECCIÓN MÚLTIPLE PARA EVENTO EXISTENTE */}
       <Modal visible={isEditSongModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -2031,7 +2090,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#1e1e1e",
     borderRadius: 12,
     padding: 18,
-    maxHeight: "78%",
+    maxHeight: "85%",
     borderWidth: 1,
   },
   modalTitleWhite: {

@@ -3,14 +3,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Linking,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Linking,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 const ADMIN_EMAIL = "jorgemaltrago@gmail.com";
@@ -44,7 +44,7 @@ export default function AdminDashboardScreen() {
   const [isActivationModalVisible, setIsActivationModalVisible] =
     useState(false);
 
-  // Modal de Borrado (Rojo)
+  // Modal de Borrado (Naranja)
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [deleteType, setDeleteType] = useState<
     "user" | "band" | "password_request" | null
@@ -149,7 +149,15 @@ export default function AdminDashboardScreen() {
     try {
       const { data, error } = await supabase
         .from("bands")
-        .select("*")
+        .select(
+          `
+          id,
+          name,
+          invite_code,
+          created_by,
+          creator:profiles!bands_created_by_fkey (full_name, email)
+        `,
+        )
         .order("name", { ascending: true });
 
       if (error) throw error;
@@ -241,12 +249,19 @@ export default function AdminDashboardScreen() {
 
     try {
       if (deleteType === "user") {
+        const { error: bandsError } = await supabase
+          .from("bands")
+          .delete()
+          .eq("created_by", selectedItem.id);
+
+        if (bandsError) throw bandsError;
+
         const { error } = await supabase
           .from("profiles")
           .delete()
           .eq("id", selectedItem.id);
         if (error) throw error;
-        showToast("Usuario eliminado correctamente.");
+        showToast("Usuario y sus bandas creadas eliminados correctamente.");
       } else if (deleteType === "band") {
         const { error } = await supabase
           .from("bands")
@@ -272,365 +287,392 @@ export default function AdminDashboardScreen() {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      {/* MENSAJE FLOTANTE (TOAST) */}
-      {toastMessage && (
-        <View style={styles.toastContainer}>
-          <Ionicons
-            name="checkmark-circle"
-            size={20}
-            color="#00bcd4"
-            style={{ marginRight: 8 }}
-          />
-          <Text style={styles.toastText}>{toastMessage}</Text>
-        </View>
-      )}
-
-      {/* CABECERA */}
-      <View style={styles.headerRow}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.replace("/dashboard" as any)}
-        >
-          <Ionicons name="arrow-back" size={20} color="#fff" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Panel de Administración</Text>
-      </View>
-
-      {/* PESTAÑAS DE NAVEGACIÓN (ALTURA FIJA Y COMPACTA CON SCROLL HORIZONTAL) */}
-      <View style={styles.tabsWrapper}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabsContainer}
-        >
-          <TouchableOpacity
-            style={[
-              styles.tabButton,
-              adminTab === "passwords" && styles.tabActiveYellow,
-            ]}
-            onPress={() => setAdminTab("passwords")}
-          >
+    <View style={{ flex: 1, backgroundColor: "#121212" }}>
+      <ScrollView contentContainerStyle={styles.container}>
+        {/* MENSAJE FLOTANTE (TOAST) */}
+        {toastMessage && (
+          <View style={styles.toastContainer}>
             <Ionicons
-              name="key-outline"
-              size={16}
-              color={adminTab === "passwords" ? "#000" : "#ff9800"}
-              style={{ marginRight: 6 }}
-            />
-            <Text
-              style={[
-                styles.tabText,
-                adminTab === "passwords" && styles.tabTextActiveBlack,
-              ]}
-            >
-              Contraseñas ({passwordRequests.length})
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.tabButton,
-              adminTab === "activations" && styles.tabActiveTurquoise,
-            ]}
-            onPress={() => setAdminTab("activations")}
-          >
-            <Ionicons
-              name="person-add-outline"
-              size={16}
-              color={adminTab === "activations" ? "#000" : "#00bcd4"}
-              style={{ marginRight: 6 }}
-            />
-            <Text
-              style={[
-                styles.tabText,
-                adminTab === "activations" && styles.tabTextActiveBlack,
-              ]}
-            >
-              Activaciones ({pendingUsers.length})
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.tabButton,
-              adminTab === "users" && styles.tabActiveWhite,
-            ]}
-            onPress={() => setAdminTab("users")}
-          >
-            <Ionicons
-              name="people-outline"
-              size={16}
-              color={adminTab === "users" ? "#000" : "#fff"}
-              style={{ marginRight: 6 }}
-            />
-            <Text
-              style={[
-                styles.tabText,
-                adminTab === "users" && styles.tabTextActiveBlack,
-              ]}
-            >
-              Usuarios ({allUsers.length})
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.tabButton,
-              adminTab === "bands" && styles.tabActiveWhite,
-            ]}
-            onPress={() => setAdminTab("bands")}
-          >
-            <Ionicons
-              name="radio-outline"
-              size={16}
-              color={adminTab === "bands" ? "#000" : "#fff"}
-              style={{ marginRight: 6 }}
-            />
-            <Text
-              style={[
-                styles.tabText,
-                adminTab === "bands" && styles.tabTextActiveBlack,
-              ]}
-            >
-              Bandas ({allBands.length})
-            </Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </View>
-
-      {/* ========================================================== */}
-      {/* PESTAÑA 1: CONTRASEÑAS */}
-      {/* ========================================================== */}
-      {adminTab === "passwords" && (
-        <View style={styles.cardSection}>
-          <Text style={[styles.sectionTitle, { color: "#ff9800" }]}>
-            🔑 Peticiones de Contraseña
-          </Text>
-          {loadingRequests ? (
-            <ActivityIndicator color="#ff9800" style={{ marginVertical: 20 }} />
-          ) : passwordRequests.length === 0 ? (
-            <Text style={styles.emptyText}>No hay peticiones pendientes.</Text>
-          ) : (
-            passwordRequests.map((item) => (
-              <View key={item.id} style={styles.itemCard}>
-                <View style={{ flex: 1, marginRight: 10 }}>
-                  <Text style={styles.itemTitle}>{item.email}</Text>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      marginTop: 4,
-                    }}
-                  >
-                    <Ionicons
-                      name="logo-whatsapp"
-                      size={15}
-                      color="#25D366"
-                      style={{ marginRight: 6 }}
-                    />
-                    <Text
-                      style={{
-                        color: "#25D366",
-                        fontSize: 13,
-                        fontWeight: "600",
-                      }}
-                    >
-                      WhatsApp: {item.phone || "No especificado"}
-                    </Text>
-                  </View>
-                  <Text style={styles.itemDate}>
-                    Fecha: {new Date(item.created_at).toLocaleString()}
-                  </Text>
-                </View>
-
-                {/* BOTONES DE ACCIÓN: GESTIONAR + PAPELERA */}
-                <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <TouchableOpacity
-                    style={[
-                      styles.btnAction,
-                      { backgroundColor: "#ff9800", marginRight: 8 },
-                    ]}
-                    onPress={() => handleOpenPasswordModal(item)}
-                  >
-                    <Text style={styles.btnActionTextDark}>Gestionar</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.btnActionIcon,
-                      { backgroundColor: "#ff5252" },
-                    ]}
-                    onPress={() =>
-                      handleOpenDeleteModal(item, "password_request")
-                    }
-                  >
-                    <Ionicons name="trash-outline" size={16} color="#fff" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))
-          )}
-        </View>
-      )}
-
-      {/* ========================================================== */}
-      {/* PESTAÑA 2: ACTIVACIONES */}
-      {/* ========================================================== */}
-      {adminTab === "activations" && (
-        <View style={styles.cardSection}>
-          <View style={styles.sectionHeaderRow}>
-            <Ionicons
-              name="person-add-outline"
-              size={18}
+              name="checkmark-circle"
+              size={20}
               color="#00bcd4"
               style={{ marginRight: 8 }}
             />
-            <Text
-              style={[
-                styles.sectionTitle,
-                { color: "#00bcd4", marginBottom: 0 },
-              ]}
-            >
-              Usuarios Pendientes de Activar
-            </Text>
+            <Text style={styles.toastText}>{toastMessage}</Text>
           </View>
-          {loadingPendingUsers ? (
-            <ActivityIndicator color="#00bcd4" style={{ marginVertical: 20 }} />
-          ) : pendingUsers.length === 0 ? (
-            <Text style={styles.emptyText}>
-              No hay usuarios esperando activación.
-            </Text>
-          ) : (
-            pendingUsers.map((user) => (
-              <View key={user.id} style={styles.itemCard}>
-                <View style={{ flex: 1, marginRight: 10 }}>
-                  <Text style={styles.itemTitle}>
-                    {user.full_name || "Sin nombre"}
-                  </Text>
-                  <Text style={styles.itemSubtitle}>{user.email}</Text>
-                  <Text style={styles.itemDate}>
-                    Instrumento: {user.instrument || "No especificado"}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={[styles.btnAction, { backgroundColor: "#00bcd4" }]}
-                  onPress={() => handleOpenActivationModal(user)}
-                >
-                  <Text style={styles.btnActionTextDark}>Activar</Text>
-                </TouchableOpacity>
-              </View>
-            ))
-          )}
-        </View>
-      )}
+        )}
 
-      {/* ========================================================== */}
-      {/* PESTAÑA 3: USUARIOS */}
-      {/* ========================================================== */}
-      {adminTab === "users" && (
-        <View style={styles.cardSection}>
-          <View style={styles.sectionHeaderRow}>
-            <Ionicons
-              name="people-outline"
-              size={18}
-              color="#fff"
-              style={{ marginRight: 8 }}
-            />
-            <Text
-              style={[styles.sectionTitle, { color: "#fff", marginBottom: 0 }]}
+        {/* TÍTULO PRINCIPAL CON NUEVO ICONO MODAL */}
+        <View style={styles.mainTitleRow}>
+          <Ionicons
+            name="shield-checkmark-outline"
+            size={26}
+            color="#ff9800"
+            style={{ marginRight: 8 }}
+          />
+          <Text style={styles.mainTitle}>Panel de Administración</Text>
+        </View>
+
+        {/* PESTAÑAS DE NAVEGACIÓN */}
+        <View style={styles.tabsWrapper}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tabsContainer}
+          >
+            <TouchableOpacity
+              style={[
+                styles.tabButton,
+                adminTab === "passwords" && styles.tabActiveYellow,
+              ]}
+              onPress={() => setAdminTab("passwords")}
             >
-              Usuarios
+              <Ionicons
+                name="key-outline"
+                size={16}
+                color={adminTab === "passwords" ? "#000" : "#ff9800"}
+                style={{ marginRight: 6 }}
+              />
+              <Text
+                style={[
+                  styles.tabText,
+                  adminTab === "passwords" && styles.tabTextActiveBlack,
+                ]}
+              >
+                Contraseñas ({passwordRequests.length})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.tabButton,
+                adminTab === "activations" && styles.tabActiveTurquoise,
+              ]}
+              onPress={() => setAdminTab("activations")}
+            >
+              <Ionicons
+                name="person-add-outline"
+                size={16}
+                color={adminTab === "activations" ? "#000" : "#00bcd4"}
+                style={{ marginRight: 6 }}
+              />
+              <Text
+                style={[
+                  styles.tabText,
+                  adminTab === "activations" && styles.tabTextActiveBlack,
+                ]}
+              >
+                Activaciones ({pendingUsers.length})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.tabButton,
+                adminTab === "users" && styles.tabActiveWhite,
+              ]}
+              onPress={() => setAdminTab("users")}
+            >
+              <Ionicons
+                name="people-outline"
+                size={16}
+                color={adminTab === "users" ? "#000" : "#fff"}
+                style={{ marginRight: 6 }}
+              />
+              <Text
+                style={[
+                  styles.tabText,
+                  adminTab === "users" && styles.tabTextActiveBlack,
+                ]}
+              >
+                Usuarios ({allUsers.length})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.tabButton,
+                adminTab === "bands" && styles.tabActiveWhite,
+              ]}
+              onPress={() => setAdminTab("bands")}
+            >
+              <Ionicons
+                name="radio-outline"
+                size={16}
+                color={adminTab === "bands" ? "#000" : "#fff"}
+                style={{ marginRight: 6 }}
+              />
+              <Text
+                style={[
+                  styles.tabText,
+                  adminTab === "bands" && styles.tabTextActiveBlack,
+                ]}
+              >
+                Bandas ({allBands.length})
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+
+        {/* PESTAÑA 1: CONTRASEÑAS */}
+        {adminTab === "passwords" && (
+          <View style={styles.cardSection}>
+            <Text style={[styles.sectionTitle, { color: "#ff9800" }]}>
+              🔑 Peticiones de Contraseña
             </Text>
-          </View>
-          {loadingAllUsers ? (
-            <ActivityIndicator color="#fff" style={{ marginVertical: 20 }} />
-          ) : allUsers.length === 0 ? (
-            <Text style={styles.emptyText}>No hay usuarios registrados.</Text>
-          ) : (
-            allUsers.map((user) => (
-              <View key={user.id} style={styles.itemCard}>
-                <View style={{ flex: 1, marginRight: 10 }}>
-                  <Text style={styles.itemTitle}>
-                    {user.full_name || "Sin nombre"}
-                  </Text>
-                  <Text style={styles.itemSubtitle}>{user.email}</Text>
-                  <Text
-                    style={{
-                      color: user.is_active ? "#00bcd4" : "#ff9800",
-                      fontSize: 12,
-                      marginTop: 2,
-                    }}
-                  >
-                    {user.is_active ? "● Activo" : "○ Pendiente"}{" "}
-                    {user.email === ADMIN_EMAIL ? "(Admin)" : ""}
-                  </Text>
+            {loadingRequests ? (
+              <ActivityIndicator
+                color="#ff9800"
+                style={{ marginVertical: 20 }}
+              />
+            ) : passwordRequests.length === 0 ? (
+              <Text style={styles.emptyText}>
+                No hay peticiones pendientes.
+              </Text>
+            ) : (
+              passwordRequests.map((item) => (
+                <View key={item.id} style={styles.itemCard}>
+                  <View style={{ flex: 1, marginRight: 10 }}>
+                    <Text style={styles.itemTitle}>{item.email}</Text>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        marginTop: 4,
+                      }}
+                    >
+                      <Ionicons
+                        name="logo-whatsapp"
+                        size={15}
+                        color="#25D366"
+                        style={{ marginRight: 6 }}
+                      />
+                      <Text
+                        style={{
+                          color: "#25D366",
+                          fontSize: 13,
+                          fontWeight: "600",
+                        }}
+                      >
+                        WhatsApp: {item.phone || "No especificado"}
+                      </Text>
+                    </View>
+                    <Text style={styles.itemDate}>
+                      Fecha: {new Date(item.created_at).toLocaleString()}
+                    </Text>
+                  </View>
+
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <TouchableOpacity
+                      style={[
+                        styles.btnAction,
+                        { backgroundColor: "#ff9800", marginRight: 8 },
+                      ]}
+                      onPress={() => handleOpenPasswordModal(item)}
+                    >
+                      <Text style={styles.btnActionTextDark}>Gestionar</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.btnActionIcon,
+                        { backgroundColor: "#ff9800" },
+                      ]}
+                      onPress={() =>
+                        handleOpenDeleteModal(item, "password_request")
+                      }
+                    >
+                      <Ionicons name="trash-outline" size={16} color="#000" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                {user.email !== ADMIN_EMAIL && (
+              ))
+            )}
+          </View>
+        )}
+
+        {/* PESTAÑA 2: ACTIVACIONES */}
+        {adminTab === "activations" && (
+          <View style={styles.cardSection}>
+            <View style={styles.sectionHeaderRow}>
+              <Ionicons
+                name="person-add-outline"
+                size={18}
+                color="#00bcd4"
+                style={{ marginRight: 8 }}
+              />
+              <Text
+                style={[
+                  styles.sectionTitle,
+                  { color: "#00bcd4", marginBottom: 0 },
+                ]}
+              >
+                Usuarios Pendientes de Activar
+              </Text>
+            </View>
+            {loadingPendingUsers ? (
+              <ActivityIndicator
+                color="#00bcd4"
+                style={{ marginVertical: 20 }}
+              />
+            ) : pendingUsers.length === 0 ? (
+              <Text style={styles.emptyText}>
+                No hay usuarios esperando activación.
+              </Text>
+            ) : (
+              pendingUsers.map((user) => (
+                <View key={user.id} style={styles.itemCard}>
+                  <View style={{ flex: 1, marginRight: 10 }}>
+                    <Text style={styles.itemTitle}>
+                      {user.full_name || "Sin nombre"}
+                    </Text>
+                    <Text style={styles.itemSubtitle}>{user.email}</Text>
+                    <Text style={styles.itemDate}>
+                      Instrumento: {user.instrument || "No especificado"}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.btnAction, { backgroundColor: "#00bcd4" }]}
+                    onPress={() => handleOpenActivationModal(user)}
+                  >
+                    <Text style={styles.btnActionTextDark}>Activar</Text>
+                  </TouchableOpacity>
+                </View>
+              ))
+            )}
+          </View>
+        )}
+
+        {/* PESTAÑA 3: USUARIOS */}
+        {adminTab === "users" && (
+          <View style={styles.cardSection}>
+            <View style={styles.sectionHeaderRow}>
+              <Ionicons
+                name="people-outline"
+                size={18}
+                color="#fff"
+                style={{ marginRight: 8 }}
+              />
+              <Text
+                style={[
+                  styles.sectionTitle,
+                  { color: "#fff", marginBottom: 0 },
+                ]}
+              >
+                Usuarios
+              </Text>
+            </View>
+            {loadingAllUsers ? (
+              <ActivityIndicator color="#fff" style={{ marginVertical: 20 }} />
+            ) : allUsers.length === 0 ? (
+              <Text style={styles.emptyText}>No hay usuarios registrados.</Text>
+            ) : (
+              allUsers.map((user) => (
+                <View key={user.id} style={styles.itemCard}>
+                  <View style={{ flex: 1, marginRight: 10 }}>
+                    <Text style={styles.itemTitle}>
+                      {user.full_name || "Sin nombre"}
+                    </Text>
+                    <Text style={styles.itemSubtitle}>{user.email}</Text>
+                    <Text
+                      style={{
+                        color: user.is_active ? "#00bcd4" : "#ff9800",
+                        fontSize: 12,
+                        marginTop: 2,
+                      }}
+                    >
+                      {user.is_active ? "● Activo" : "○ Pendiente"}{" "}
+                      {user.email === ADMIN_EMAIL ? "(Admin)" : ""}
+                    </Text>
+                  </View>
+                  {user.email !== ADMIN_EMAIL && (
+                    <TouchableOpacity
+                      style={[
+                        styles.btnActionIcon,
+                        { backgroundColor: "#ff9800" },
+                      ]}
+                      onPress={() => handleOpenDeleteModal(user, "user")}
+                    >
+                      <Ionicons name="trash-outline" size={16} color="#000" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))
+            )}
+          </View>
+        )}
+
+        {/* PESTAÑA 4: BANDAS */}
+        {adminTab === "bands" && (
+          <View style={styles.cardSection}>
+            <View style={styles.sectionHeaderRow}>
+              <Ionicons
+                name="radio-outline"
+                size={18}
+                color="#fff"
+                style={{ marginRight: 8 }}
+              />
+              <Text
+                style={[
+                  styles.sectionTitle,
+                  { color: "#fff", marginBottom: 0 },
+                ]}
+              >
+                Bandas
+              </Text>
+            </View>
+            {loadingBands ? (
+              <ActivityIndicator color="#fff" style={{ marginVertical: 20 }} />
+            ) : allBands.length === 0 ? (
+              <Text style={styles.emptyText}>No hay bandas creadas.</Text>
+            ) : (
+              allBands.map((band) => (
+                <View key={band.id} style={styles.itemCard}>
+                  <View style={{ flex: 1, marginRight: 10 }}>
+                    <Text style={styles.itemTitle}>{band.name}</Text>
+                    <Text style={styles.itemSubtitle}>
+                      Creador:{" "}
+                      {band.creator?.full_name ||
+                        band.creator?.email ||
+                        "Desconocido"}
+                    </Text>
+                    <Text style={styles.itemDate}>
+                      Código: {band.invite_code}
+                    </Text>
+                  </View>
                   <TouchableOpacity
                     style={[
                       styles.btnActionIcon,
-                      { backgroundColor: "#ff5252" },
+                      { backgroundColor: "#ff9800" },
                     ]}
-                    onPress={() => handleOpenDeleteModal(user, "user")}
+                    onPress={() => handleOpenDeleteModal(band, "band")}
                   >
-                    <Ionicons name="trash-outline" size={16} color="#fff" />
+                    <Ionicons name="trash-outline" size={16} color="#000" />
                   </TouchableOpacity>
-                )}
-              </View>
-            ))
-          )}
-        </View>
-      )}
-
-      {/* ========================================================== */}
-      {/* PESTAÑA 4: BANDAS */}
-      {/* ========================================================== */}
-      {adminTab === "bands" && (
-        <View style={styles.cardSection}>
-          <View style={styles.sectionHeaderRow}>
-            <Ionicons
-              name="radio-outline"
-              size={18}
-              color="#fff"
-              style={{ marginRight: 8 }}
-            />
-            <Text
-              style={[styles.sectionTitle, { color: "#fff", marginBottom: 0 }]}
-            >
-              Bandas
-            </Text>
-          </View>
-          {loadingBands ? (
-            <ActivityIndicator color="#fff" style={{ marginVertical: 20 }} />
-          ) : allBands.length === 0 ? (
-            <Text style={styles.emptyText}>No hay bandas creadas.</Text>
-          ) : (
-            allBands.map((band) => (
-              <View key={band.id} style={styles.itemCard}>
-                <View style={{ flex: 1, marginRight: 10 }}>
-                  <Text style={styles.itemTitle}>{band.name}</Text>
-                  <Text style={styles.itemSubtitle}>
-                    Género: {band.genre || "No especificado"}
-                  </Text>
-                  <Text style={styles.itemDate}>
-                    Código: {band.invite_code}
-                  </Text>
                 </View>
-                <TouchableOpacity
-                  style={[styles.btnActionIcon, { backgroundColor: "#ff5252" }]}
-                  onPress={() => handleOpenDeleteModal(band, "band")}
-                >
-                  <Ionicons name="trash-outline" size={16} color="#fff" />
-                </TouchableOpacity>
-              </View>
-            ))
-          )}
-        </View>
-      )}
+              ))
+            )}
+          </View>
+        )}
+      </ScrollView>
 
-      {/* ========================================================== */}
-      {/* MODAL 1: GESTIÓN DE CONTRASEÑA Y WHATSAPP */}
-      {/* ========================================================== */}
+      {/* BARRA INFERIOR ELEVADA CON BOTÓN VOLVER EN COLOR TURQUESA */}
+      <View style={styles.bottomBar}>
+        <TouchableOpacity
+          style={styles.turquoiseBackButton}
+          onPress={() => router.replace("/dashboard" as any)}
+        >
+          <Ionicons
+            name="arrow-back"
+            size={20}
+            color="#000"
+            style={{ marginRight: 6 }}
+          />
+          <Text style={styles.turquoiseBackButtonText}>Volver</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* MODAL 1: CONTRASEÑA */}
       <Modal visible={isPasswordModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { borderColor: "#ff9800" }]}>
@@ -687,9 +729,7 @@ export default function AdminDashboardScreen() {
         </View>
       </Modal>
 
-      {/* ========================================================== */}
       {/* MODAL 2: ACTIVAR USUARIO */}
-      {/* ========================================================== */}
       <Modal
         visible={isActivationModalVisible}
         transparent
@@ -746,16 +786,14 @@ export default function AdminDashboardScreen() {
         </View>
       </Modal>
 
-      {/* ========================================================== */}
-      {/* MODAL 3: ELIMINAR / DESTRUCTIVO */}
-      {/* ========================================================== */}
+      {/* MODAL 3: ELIMINAR */}
       <Modal visible={isDeleteModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { borderColor: "#ff5252" }]}>
+          <View style={[styles.modalContent, { borderColor: "#ff9800" }]}>
             <View style={{ alignItems: "center", marginBottom: 10 }}>
-              <Ionicons name="warning-outline" size={38} color="#ff5252" />
+              <Ionicons name="warning-outline" size={38} color="#ff9800" />
             </View>
-            <Text style={[styles.modalTitle, { color: "#ff5252" }]}>
+            <Text style={[styles.modalTitle, { color: "#ff9800" }]}>
               Confirmar Eliminación
             </Text>
             <Text style={styles.modalDesc}>
@@ -770,7 +808,9 @@ export default function AdminDashboardScreen() {
                   selectedItem?.name ||
                   selectedItem?.email}
               </Text>
-              ? Esta acción no se puede deshacer.
+              ?
+              {deleteType === "user" &&
+                "\n\n⚠️ Al borrar este usuario, también se eliminarán todas las bandas creadas por él."}
             </Text>
 
             <View
@@ -796,10 +836,10 @@ export default function AdminDashboardScreen() {
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: "#ff5252" }]}
+                style={[styles.modalBtn, { backgroundColor: "#ff9800" }]}
                 onPress={handleConfirmDelete}
               >
-                <Text style={{ color: "#fff", fontWeight: "bold" }}>
+                <Text style={{ color: "#000", fontWeight: "bold" }}>
                   Eliminar
                 </Text>
               </TouchableOpacity>
@@ -807,12 +847,18 @@ export default function AdminDashboardScreen() {
           </View>
         </View>
       </Modal>
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 16, backgroundColor: "#121212", flexGrow: 1 },
+  // Se aumenta paddingBottom para que el contenido no quede tapado por la barra flotante elevada
+  container: {
+    padding: 16,
+    backgroundColor: "#121212",
+    flexGrow: 1,
+    paddingBottom: 120,
+  },
   toastContainer: {
     position: "absolute",
     top: 10,
@@ -828,14 +874,21 @@ const styles = StyleSheet.create({
     zIndex: 999,
   },
   toastText: { color: "#fff", fontSize: 14, fontWeight: "600" },
-  headerRow: { flexDirection: "row", alignItems: "center", marginBottom: 15 },
-  backButton: {
-    padding: 8,
-    backgroundColor: "#222",
-    borderRadius: 8,
-    marginRight: 12,
+
+  // Cabecera renovada sin escudo antiguo
+  mainTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 5,
+    marginBottom: 16,
   },
-  headerTitle: { color: "#fff", fontSize: 20, fontWeight: "bold" },
+  mainTitle: {
+    fontSize: 22,
+    fontWeight: "bold",
+    color: "#ff9800",
+    textAlign: "center",
+  },
 
   // Pestañas con scroll horizontal de altura fija y compacta
   tabsWrapper: {
@@ -918,6 +971,33 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   btnActionTextDark: { color: "#000", fontWeight: "bold", fontSize: 13 },
+
+  // Barra inferior elevada para evitar la botonera de Android
+  bottomBar: {
+    position: "absolute",
+    bottom: 50, // Elevado 50 puntos por encima del borde inferior absoluto
+    left: 16,
+    right: 16,
+    backgroundColor: "transparent",
+    alignItems: "center",
+  },
+  turquoiseBackButton: {
+    backgroundColor: "#00bcd4",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 10,
+    width: "100%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 6,
+  },
+  turquoiseBackButtonText: { color: "#000", fontWeight: "bold", fontSize: 16 },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.85)",
