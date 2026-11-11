@@ -271,7 +271,6 @@ export default function CalendarScreen() {
               .join("")
           : '<p style="font-size: 16px; font-style: italic; color: #777; padding-left: 10px;">No hay canciones en este evento.</p>';
 
-      // Detección del logo: Si la banda tiene logo_url cargado lo imprime, si no usa la caja BAND
       const logoHtml = bandLogo
         ? `<img src="${bandLogo}" style="width: 45px; height: 45px; object-fit: contain; border-radius: 4px;" />`
         : `<div class="logo-box">BAND</div>`;
@@ -290,7 +289,6 @@ export default function CalendarScreen() {
               .event-date { font-size: 22px; color: #555; margin-bottom: 10px; text-align: center; }
               .list-container { width: 100%; text-align: left; overflow: hidden; }
               
-              /* Canciones fijadas a 36 puntos, en negrita y con espacio ultra reducido entre líneas */
               .song-item {
                 margin-bottom: 4px;
                 font-size: 36px !important;
@@ -1266,304 +1264,320 @@ export default function CalendarScreen() {
               <View
                 style={[
                   styles.modalContent,
-                  { borderColor: detailModalBorderColor },
+                  { borderColor: detailModalBorderColor, maxHeight: "90%" },
                 ]}
               >
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    marginBottom: 6,
-                  }}
+                {/* ScrollView unificado para toda la tarjeta del modal */}
+                <ScrollView
+                  showsVerticalScrollIndicator={true}
+                  contentContainerStyle={{ paddingBottom: 10 }}
                 >
-                  {detailEventType === "Ensayo" && (
-                    <Ionicons
-                      name="musical-notes-outline"
-                      size={26}
-                      color="#00bcd4"
-                      style={{ marginRight: 10 }}
-                    />
-                  )}
-                  {detailEventType === "Actuación" && (
-                    <Ionicons
-                      name="mic-outline"
-                      size={26}
-                      color="#ff9800"
-                      style={{ marginRight: 10 }}
-                    />
-                  )}
-                  {detailEventType !== "Ensayo" &&
-                    detailEventType !== "Actuación" && (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      marginBottom: 6,
+                    }}
+                  >
+                    {detailEventType === "Ensayo" && (
                       <Ionicons
-                        name="location-outline"
+                        name="musical-notes-outline"
                         size={26}
-                        color="#ffffff"
+                        color="#00bcd4"
                         style={{ marginRight: 10 }}
                       />
                     )}
-                  <Text style={styles.modalTitleWhite}>
-                    {selectedEventDetails?.name}
-                  </Text>
-                </View>
-
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    marginBottom: 4,
-                  }}
-                >
-                  <Text style={styles.modalDateInfo}>
-                    {selectedEventDetails?.dateString}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.modalTypeBadgeText,
-                      {
-                        color:
-                          detailEventType === "Actuación"
-                            ? "#ff9800"
-                            : detailEventType === "Ensayo"
-                              ? "#00bcd4"
-                              : "#ffffff",
-                      },
-                    ]}
-                  >
-                    {detailEventType}
-                  </Text>
-                </View>
-
-                {/* BLOQUE DE EDICIÓN DE HORA Y ANOTACIONES */}
-                <View style={styles.editTimeBox}>
-                  <Text style={styles.labelSmall}>Hora (HH:MM):</Text>
-                  <TextInput
-                    style={[
-                      styles.input,
-                      {
-                        marginBottom: 8,
-                        padding: 10,
-                        fontSize: 15,
-                      },
-                    ]}
-                    value={editingEventTime}
-                    onChangeText={setEditingEventTime}
-                    placeholder="Ej: 21:15"
-                    placeholderTextColor="#666"
-                    maxLength={5}
-                  />
-
-                  <Text style={styles.labelSmall}>Anotaciones del evento:</Text>
-                  <TextInput
-                    style={[
-                      styles.input,
-                      {
-                        height: 70,
-                        textAlignVertical: "top",
-                        marginBottom: 8,
-                        padding: 10,
-                        fontSize: 15,
-                      },
-                    ]}
-                    value={editingEventNotes}
-                    onChangeText={setEditingEventNotes}
-                    placeholder="Añade notas..."
-                    placeholderTextColor="#666"
-                    multiline
-                  />
-
-                  <TouchableOpacity
-                    style={styles.updateTimeButtonWhite}
-                    onPress={handleUpdateEventTimeAndNotes}
-                  >
-                    <Text style={styles.updateTimeButtonWhiteText}>
-                      Guardar Cambios de Hora / Anotaciones
+                    {detailEventType === "Actuación" && (
+                      <Ionicons
+                        name="mic-outline"
+                        size={26}
+                        color="#ff9800"
+                        style={{ marginRight: 10 }}
+                      />
+                    )}
+                    {detailEventType !== "Ensayo" &&
+                      detailEventType !== "Actuación" && (
+                        <Ionicons
+                          name="location-outline"
+                          size={26}
+                          color="#ffffff"
+                          style={{ marginRight: 10 }}
+                        />
+                      )}
+                    <Text style={styles.modalTitleWhite}>
+                      {selectedEventDetails?.name}
                     </Text>
-                  </TouchableOpacity>
-                </View>
+                  </View>
 
-                <View style={styles.repertoireSectionHeader}>
-                  <Text style={styles.subSectionTitle}>
-                    Repertorio ({selectedEventDetails?.songsCount || 0}{" "}
-                    canciones):
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.addSongIconButtonWhite}
-                    onPress={async () => {
-                      await loadCalendarData();
-                      const currentSongIds =
-                        selectedEventDetails?.songsOrderedList?.map(
-                          (s: any) => s.id,
-                        ) || [];
-                      setTempSelectedSongs(currentSongIds);
-                      setIsEditSongModalVisible(true);
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginBottom: 4,
                     }}
                   >
-                    <Ionicons
-                      name="add"
-                      size={18}
-                      color="#000000"
-                      style={{ marginRight: 4 }}
+                    <Text style={styles.modalDateInfo}>
+                      {selectedEventDetails?.dateString}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.modalTypeBadgeText,
+                        {
+                          color:
+                            detailEventType === "Actuación"
+                              ? "#ff9800"
+                              : detailEventType === "Ensayo"
+                                ? "#00bcd4"
+                                : "#ffffff",
+                        },
+                      ]}
+                    >
+                      {detailEventType}
+                    </Text>
+                  </View>
+
+                  {/* BLOQUE DE EDICIÓN DE HORA Y ANOTACIONES */}
+                  <View style={styles.editTimeBox}>
+                    <Text style={styles.labelSmall}>Hora (HH:MM):</Text>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        {
+                          marginBottom: 8,
+                          padding: 10,
+                          fontSize: 15,
+                        },
+                      ]}
+                      value={editingEventTime}
+                      onChangeText={setEditingEventTime}
+                      placeholder="Ej: 21:15"
+                      placeholderTextColor="#666"
+                      maxLength={5}
                     />
-                    <Text style={styles.addSongButtonTextUnified}>
-                      Canciones
-                    </Text>
-                  </TouchableOpacity>
-                </View>
 
-                <View style={styles.estimatedDurationRow}>
-                  <Ionicons
-                    name="time-outline"
-                    size={16}
-                    color="#00bcd4"
-                    style={{ marginRight: 6 }}
-                  />
-                  <Text style={styles.estimatedDurationText}>
-                    Duración estimada:{" "}
-                    <Text style={{ color: "#ffffff", fontWeight: "bold" }}>
-                      {calculateTotalDuration(
-                        selectedEventDetails?.songsOrderedList,
-                      )}
+                    <Text style={styles.labelSmall}>
+                      Anotaciones del evento:
                     </Text>
-                  </Text>
-                </View>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        {
+                          height: 70,
+                          textAlignVertical: "top",
+                          marginBottom: 8,
+                          padding: 10,
+                          fontSize: 15,
+                        },
+                      ]}
+                      value={editingEventNotes}
+                      onChangeText={setEditingEventNotes}
+                      placeholder="Añade notas..."
+                      placeholderTextColor="#666"
+                      multiline
+                    />
 
-                <ScrollView style={styles.modalScrollList}>
-                  {selectedEventDetails?.songsOrderedList?.length === 0 ? (
-                    <Text style={styles.emptyText}>
-                      Este evento no tiene canciones asociadas. ¡Añade algunas!
+                    <TouchableOpacity
+                      style={styles.updateTimeButtonWhite}
+                      onPress={handleUpdateEventTimeAndNotes}
+                    >
+                      <Text style={styles.updateTimeButtonWhiteText}>
+                        Guardar Cambios de Hora / Anotaciones
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.repertoireSectionHeader}>
+                    <Text style={styles.subSectionTitle}>
+                      Repertorio ({selectedEventDetails?.songsCount || 0}{" "}
+                      canciones):
                     </Text>
-                  ) : (
-                    selectedEventDetails?.songsOrderedList?.map(
-                      (song: any, index: number) => (
-                        <View key={song.id || index} style={styles.reorderRow}>
-                          <TouchableOpacity
-                            style={{ flex: 1, marginRight: 8 }}
-                            onPress={() => {
-                              setSelectedSongDetail(song);
-                              setIsSongDetailModalVisible(true);
-                            }}
+                    <TouchableOpacity
+                      style={styles.addSongIconButtonWhite}
+                      onPress={async () => {
+                        await loadCalendarData();
+                        const currentSongIds =
+                          selectedEventDetails?.songsOrderedList?.map(
+                            (s: any) => s.id,
+                          ) || [];
+                        setTempSelectedSongs(currentSongIds);
+                        setIsEditSongModalVisible(true);
+                      }}
+                    >
+                      <Ionicons
+                        name="add"
+                        size={18}
+                        color="#000000"
+                        style={{ marginRight: 4 }}
+                      />
+                      <Text style={styles.addSongButtonTextUnified}>
+                        Canciones
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.estimatedDurationRow}>
+                    <Ionicons
+                      name="time-outline"
+                      size={16}
+                      color="#00bcd4"
+                      style={{ marginRight: 6 }}
+                    />
+                    <Text style={styles.estimatedDurationText}>
+                      Duración estimada:{" "}
+                      <Text style={{ color: "#ffffff", fontWeight: "bold" }}>
+                        {calculateTotalDuration(
+                          selectedEventDetails?.songsOrderedList,
+                        )}
+                      </Text>
+                    </Text>
+                  </View>
+
+                  {/* Lista de canciones con View simple para fluir con el scroll general */}
+                  <View style={{ marginBottom: 10 }}>
+                    {selectedEventDetails?.songsOrderedList?.length === 0 ? (
+                      <Text style={styles.emptyText}>
+                        Este evento no tiene canciones asociadas. ¡Añade
+                        algunas!
+                      </Text>
+                    ) : (
+                      selectedEventDetails?.songsOrderedList?.map(
+                        (song: any, index: number) => (
+                          <View
+                            key={song.id || index}
+                            style={styles.reorderRow}
                           >
-                            <Text
-                              style={styles.reorderSongText}
-                              numberOfLines={1}
+                            <TouchableOpacity
+                              style={{ flex: 1, marginRight: 8 }}
+                              onPress={() => {
+                                setSelectedSongDetail(song);
+                                setIsSongDetailModalVisible(true);
+                              }}
                             >
-                              {index + 1}. {song.title}
-                            </Text>
-                            <Text
-                              style={styles.modalSongMetaLarge}
-                              numberOfLines={1}
-                            >
-                              Tono: {getKeyLabel(song.key)}{" "}
-                              {song.duration ? `| ⏱️ ${song.duration}` : ""}{" "}
-                              {song.pdf_url ? "| 📄 PDF" : ""}
-                            </Text>
-                          </TouchableOpacity>
+                              <Text
+                                style={styles.reorderSongText}
+                                numberOfLines={1}
+                              >
+                                {index + 1}. {song.title}
+                              </Text>
+                              <Text
+                                style={styles.modalSongMetaLarge}
+                                numberOfLines={1}
+                              >
+                                Tono: {getKeyLabel(song.key)}{" "}
+                                {song.duration ? `| ⏱️ ${song.duration}` : ""}{" "}
+                                {song.pdf_url ? "| 📄 PDF" : ""}
+                              </Text>
+                            </TouchableOpacity>
 
-                          <View style={styles.rowActionsRight}>
-                            <TouchableOpacity
-                              style={styles.miniActionButton}
-                              onPress={() => moveEventSongUp(index)}
-                            >
-                              <Ionicons
-                                name="chevron-up"
-                                size={20}
-                                color="#00bcd4"
-                              />
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={styles.miniActionButton}
-                              onPress={() => moveEventSongDown(index)}
-                            >
-                              <Ionicons
-                                name="chevron-down"
-                                size={20}
-                                color="#00bcd4"
-                              />
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={styles.miniActionButton}
-                              onPress={() =>
-                                handleRemoveSongFromExistingEvent(song.id)
-                              }
-                            >
-                              <Ionicons
-                                name="close"
-                                size={22}
-                                color="#ff9800"
-                              />
-                            </TouchableOpacity>
+                            <View style={styles.rowActionsRight}>
+                              <TouchableOpacity
+                                style={styles.miniActionButton}
+                                onPress={() => moveEventSongUp(index)}
+                              >
+                                <Ionicons
+                                  name="chevron-up"
+                                  size={20}
+                                  color="#00bcd4"
+                                />
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.miniActionButton}
+                                onPress={() => moveEventSongDown(index)}
+                              >
+                                <Ionicons
+                                  name="chevron-down"
+                                  size={20}
+                                  color="#00bcd4"
+                                />
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.miniActionButton}
+                                onPress={() =>
+                                  handleRemoveSongFromExistingEvent(song.id)
+                                }
+                              >
+                                <Ionicons
+                                  name="close"
+                                  size={22}
+                                  color="#ff9800"
+                                />
+                              </TouchableOpacity>
+                            </View>
                           </View>
-                        </View>
-                      ),
-                    )
-                  )}
+                        ),
+                      )
+                    )}
+                  </View>
+
+                  {/* Botones del final accesibles haciendo scroll hasta abajo */}
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      marginTop: 10,
+                      gap: 6,
+                    }}
+                  >
+                    <TouchableOpacity
+                      style={[
+                        styles.modalCloseButtonDanger,
+                        { flex: 1, marginTop: 0, backgroundColor: "#ff9800" },
+                      ]}
+                      onPress={() =>
+                        handleDeleteEvent(selectedEventDetails?.id)
+                      }
+                    >
+                      <Text
+                        style={[styles.modalCloseButtonText, { color: "#000" }]}
+                      >
+                        Eliminar
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.modalCloseButtonDynamic,
+                        {
+                          flex: 1,
+                          marginTop: 0,
+                          backgroundColor: "#00bcd4",
+                        },
+                      ]}
+                      onPress={() => setIsEventDetailsModalVisible(false)}
+                    >
+                      <Text
+                        style={[
+                          styles.modalCloseButtonDynamicText,
+                          { color: "#000000" },
+                        ]}
+                      >
+                        Cerrar
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.modalCloseButtonDynamic,
+                        {
+                          flex: 1,
+                          marginTop: 0,
+                          backgroundColor: "#ffffff",
+                        },
+                      ]}
+                      onPress={handlePrintSetlist}
+                    >
+                      <Text
+                        style={[
+                          styles.modalCloseButtonDynamicText,
+                          { color: "#000000" },
+                        ]}
+                      >
+                        Imprimir
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </ScrollView>
-
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    marginTop: 10,
-                    gap: 6,
-                  }}
-                >
-                  <TouchableOpacity
-                    style={[
-                      styles.modalCloseButtonDanger,
-                      { flex: 1, marginTop: 0, backgroundColor: "#ff9800" },
-                    ]}
-                    onPress={() => handleDeleteEvent(selectedEventDetails?.id)}
-                  >
-                    <Text
-                      style={[styles.modalCloseButtonText, { color: "#000" }]}
-                    >
-                      Eliminar
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.modalCloseButtonDynamic,
-                      {
-                        flex: 1,
-                        marginTop: 0,
-                        backgroundColor: "#00bcd4",
-                      },
-                    ]}
-                    onPress={() => setIsEventDetailsModalVisible(false)}
-                  >
-                    <Text
-                      style={[
-                        styles.modalCloseButtonDynamicText,
-                        { color: "#000000" },
-                      ]}
-                    >
-                      Cerrar
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.modalCloseButtonDynamic,
-                      {
-                        flex: 1,
-                        marginTop: 0,
-                        backgroundColor: "#ffffff",
-                      },
-                    ]}
-                    onPress={handlePrintSetlist}
-                  >
-                    <Text
-                      style={[
-                        styles.modalCloseButtonDynamicText,
-                        { color: "#000000" },
-                      ]}
-                    >
-                      Imprimir
-                    </Text>
-                  </TouchableOpacity>
-                </View>
               </View>
             </View>
           );
@@ -2122,7 +2136,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#1e1e1e",
     borderRadius: 12,
     padding: 18,
-    maxHeight: "85%",
     borderWidth: 1,
   },
   modalTitleWhite: {

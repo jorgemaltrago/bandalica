@@ -186,7 +186,7 @@ export default function DashboardScreen() {
 
         const bandIds = userBands.map((b: any) => b.id);
         if (bandIds.length > 0) {
-          const todayStr = new Date().toISOString().split("T")[0];
+          const now = new Date(); // Hora y fecha actual exacta para filtrar eventos expirados
 
           const { data: eventsData, error: eventError } = await supabase
             .from("events")
@@ -209,42 +209,52 @@ export default function DashboardScreen() {
             `,
             )
             .in("band_id", bandIds)
-            .gte("event_date", todayStr);
+            .order("event_date", { ascending: true });
 
           if (!eventError && eventsData) {
-            const formattedEvents = eventsData.map((ev: any) => {
-              const dateObj = new Date(ev.event_date + "T00:00:00");
-              const sortedSongs = ev.event_songs
-                ? ev.event_songs
-                    .sort((a: any, b: any) => a.position - b.position)
-                    .map((es: any) => es.songs)
-                : [];
+            const formattedEvents = eventsData
+              .map((ev: any) => {
+                const eventTimeStr = ev.time
+                  ? ev.time.substring(0, 5)
+                  : "20:00";
+                const eventDateTimeStr = `${ev.event_date}T${eventTimeStr}:00`;
+                const eventDateObj = new Date(eventDateTimeStr);
 
-              const isToday = ev.event_date === todayStr;
+                const sortedSongs = ev.event_songs
+                  ? ev.event_songs
+                      .sort((a: any, b: any) => a.position - b.position)
+                      .map((es: any) => es.songs)
+                  : [];
 
-              return {
-                id: ev.id,
-                name: ev.name,
-                type: ev.type,
-                bandName: ev.bands?.name || "Banda",
-                bandLogo: ev.bands?.logo_url || null,
-                dateString: isToday
-                  ? "¡Hoy!"
-                  : `${fullWeekDays[(dateObj.getDay() + 6) % 7]}, ${dateObj.getDate()} de ${monthNames[dateObj.getMonth()]} de ${dateObj.getFullYear()}`,
-                rawDate: ev.event_date,
-                time: ev.time ? ev.time.substring(0, 5) : "20:00",
-                songsCount: sortedSongs.length,
-                songsOrderedList: sortedSongs,
-              };
-            });
+                const todayStr = now.toISOString().split("T")[0];
+                const isToday = ev.event_date === todayStr;
 
-            // ORDENACIÓN: Primero por fecha (ascendente, más cercanos primero) y luego por hora
-            formattedEvents.sort((a: any, b: any) => {
-              if (a.rawDate !== b.rawDate) {
-                return a.rawDate.localeCompare(b.rawDate);
-              }
-              return a.time.localeCompare(b.time);
-            });
+                return {
+                  id: ev.id,
+                  name: ev.name,
+                  type: ev.type,
+                  bandName: ev.bands?.name || "Banda",
+                  bandLogo: ev.bands?.logo_url || null,
+                  dateString: isToday
+                    ? "¡Hoy!"
+                    : `${fullWeekDays[(eventDateObj.getDay() + 6) % 7]}, ${eventDateObj.getDate()} de ${monthNames[eventDateObj.getMonth()]} de ${eventDateObj.getFullYear()}`,
+                  rawDate: ev.event_date,
+                  time: eventTimeStr,
+                  eventDateTimeObj: eventDateObj,
+                  songsCount: sortedSongs.length,
+                  songsOrderedList: sortedSongs,
+                };
+              })
+              .filter((ev: any) => {
+                // FILTRO ESTRICTO: Ocultar eventos cuya fecha y hora ya hayan pasado
+                return ev.eventDateTimeObj >= now;
+              });
+
+            // ORDENACIÓN: Primero los más cercanos cronológicamente
+            formattedEvents.sort(
+              (a: any, b: any) =>
+                a.eventDateTimeObj.getTime() - b.eventDateTimeObj.getTime(),
+            );
 
             setUpcomingEvents(formattedEvents);
           }
@@ -571,7 +581,7 @@ export default function DashboardScreen() {
     }
 
     router.push({
-      pathname: "/tabs/calendar" as any, // <--- Modificado aquí para abrir directamente el Calendario
+      pathname: "/tabs/calendar" as any,
       params: {
         bandId: bandId,
         userId: currentUser.id,
