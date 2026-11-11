@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "Bandalica",
+    "slug": "Bandalica",
+    "version": "1.1.0",
+    "orientation": "portrait",
+    "icon": "./src/assets/logo2.png",
+    "scheme": "bandalica",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "icon": "./src/assets/logo2.png"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#000000",
+        "foregroundImage": "./src/assets/logo2.png",
+        "monochromeImage": "./src/assets/logo2.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.jorgemaltrago.Bandalica"
+    },
+    "web": {
+      "output": "static",
+      "bundler": "metro",
+      "favicon": "./src/assets/logo2.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#000000",
+          "image": "./src/assets/logo2.png",
+          "imageWidth": 200
+        }
+      ],
+      "expo-sharing"
+    ],
+    "experiments": {
+      "baseUrl": "/Bandalica",
+      "typedRoutes": true,
+      "reactCompiler": false
+    },
+    "extra": {
+      "eas": {
+        "projectId": "68a0d843-ee49-4990-b683-6bcfe0e8d7d0"
+      }
+    }
+  }
+}
