@@ -34,7 +34,9 @@
           "imageWidth": 200
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      "expo-status-bar",
+      "expo-web-browser"
     ],
     "experiments": {
       "baseUrl": "/Bandalica",
