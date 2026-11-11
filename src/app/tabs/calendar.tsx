@@ -263,21 +263,17 @@ export default function CalendarScreen() {
           ? selectedEventDetails.songsOrderedList
               .map(
                 (song: any, index: number) => `
-            <div style="margin-bottom: 8px; font-size: 20px; font-weight: bold; text-transform: uppercase; page-break-inside: avoid; padding-left: 20px;">
+            <div class="song-item">
               ${index + 1}. ${song.title}
             </div>
           `,
               )
               .join("")
-          : '<p style="font-size: 18px; font-style: italic; color: #777; padding-left: 20px;">No hay canciones en este evento.</p>';
-
-      const notesHtml = selectedEventDetails?.notes
-        ? `<div style="margin-top: 20px; font-size: 16px; text-align: left; background: #f4f4f4; padding: 10px; border-radius: 5px; page-break-inside: avoid;"><strong>Anotaciones:</strong> ${selectedEventDetails.notes}</div>`
-        : "";
+          : '<p style="font-size: 16px; font-style: italic; color: #777; padding-left: 10px;">No hay canciones en este evento.</p>';
 
       // Detección del logo: Si la banda tiene logo_url cargado lo imprime, si no usa la caja BAND
       const logoHtml = bandLogo
-        ? `<img src="${bandLogo}" style="width: 60px; height: 60px; object-fit: contain; border-radius: 6px;" />`
+        ? `<img src="${bandLogo}" style="width: 45px; height: 45px; object-fit: contain; border-radius: 4px;" />`
         : `<div class="logo-box">BAND</div>`;
 
       const htmlContent = `
@@ -285,16 +281,30 @@ export default function CalendarScreen() {
           <head>
             <meta charset="utf-8">
             <style>
-              @page { size: A4; margin: 15mm 20mm; }
-              body { font-family: 'Helvetica', Arial, sans-serif; padding: 10px; color: #111; text-align: center; background: #fff; }
-              .header-block { display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px; }
-              .logo-box { width: 60px; height: 60px; background-color: #333; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; border-radius: 6px; font-size: 16px; }
-              .band-name { font-size: 26px; font-weight: bold; color: #000; text-align: left; }
-              .divider { border-bottom: 2px solid #333; margin-bottom: 15px; margin-top: 10px; width: 100%; }
-              .event-title { font-size: 20px; color: #222; margin-bottom: 4px; font-weight: bold; text-align: center; }
-              .event-date { font-size: 16px; color: #555; margin-bottom: 15px; text-align: center; }
-              .list-container { width: 100%; text-align: left; }
+              @page { size: A4; margin: 10mm 12mm; }
+              body { font-family: 'Helvetica', Arial, sans-serif; padding: 0px; margin: 0px; color: #111; text-align: center; background: #fff; }
+              .header-block { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 2px; }
+              .logo-box { width: 65px; height: 65px; background-color: #333; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; border-radius: 4px; font-size: 14px; }
+              .band-name { font-size: 32px; font-weight: bold; color: #000; text-align: left; }
+              .event-title { font-size: 28px; color: #222; margin-bottom: 1px; font-weight: bold; text-align: center; }
+              .event-date { font-size: 22px; color: #555; margin-bottom: 10px; text-align: center; }
+              .list-container { width: 100%; text-align: left; overflow: hidden; }
               
+              /* Canciones fijadas a 36 puntos, en negrita y con espacio ultra reducido entre líneas */
+              .song-item {
+                margin-bottom: 4px;
+                font-size: 36px !important;
+                font-weight: bold;
+                text-transform: uppercase;
+                page-break-inside: avoid;
+                padding-left: 20px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                width: 100%;
+                line-height: 1.05;
+              }
+
               @media print {
                 body { -webkit-print-color-adjust: exact; }
               }
@@ -311,12 +321,9 @@ export default function CalendarScreen() {
               <div class="event-date">${selectedEventDetails?.dateString} - ${selectedEventDetails?.time}</div>
             </div>
 
-            <div class="divider"></div>
-
             <div class="list-container">
               ${songsHtml}
             </div>
-            ${notesHtml}
           </body>
         </html>
       `;
