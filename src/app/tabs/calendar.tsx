@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import {
   Linking,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -44,6 +45,7 @@ export default function CalendarScreen() {
   const [selectedSongs, setSelectedSongs] = useState<string[]>([]);
   const [eventsList, setEventsList] = useState<any[]>([]);
   const [bandName, setBandName] = useState("Nombre de la Banda");
+  const [bandLogo, setBandLogo] = useState<string | null>(null);
 
   // Estado temporal compartido para la selección múltiple en modales
   const [tempSelectedSongs, setTempSelectedSongs] = useState<string[]>([]);
@@ -142,11 +144,12 @@ export default function CalendarScreen() {
     try {
       const { data, error } = await supabase
         .from("bands")
-        .select("name")
+        .select("name, logo_url")
         .eq("id", bandId)
         .single();
-      if (!error && data?.name) {
-        setBandName(data.name);
+      if (!error && data) {
+        if (data.name) setBandName(data.name);
+        if (data.logo_url) setBandLogo(data.logo_url);
       }
     } catch (e) {
       // Ignorar
@@ -215,7 +218,7 @@ export default function CalendarScreen() {
             id: ev.id,
             name: ev.name,
             type: ev.type,
-            rawDate: ev.event_date, // Para ordenación estricta por fecha
+            rawDate: ev.event_date,
             day: dateObj.getDate(),
             month: dateObj.getMonth(),
             year: dateObj.getFullYear(),
@@ -227,7 +230,6 @@ export default function CalendarScreen() {
           };
         });
 
-        // NUEVO: Ordenar eventos primero por fecha y luego por hora
         formattedEvents.sort((a: any, b: any) => {
           if (a.rawDate !== b.rawDate) {
             return a.rawDate.localeCompare(b.rawDate);
@@ -261,37 +263,47 @@ export default function CalendarScreen() {
           ? selectedEventDetails.songsOrderedList
               .map(
                 (song: any, index: number) => `
-            <div style="margin-bottom: 8px; font-size: 27px; font-weight: bold; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 35px;">
+            <div style="margin-bottom: 8px; font-size: 20px; font-weight: bold; text-transform: uppercase; page-break-inside: avoid; padding-left: 20px;">
               ${index + 1}. ${song.title}
             </div>
           `,
               )
               .join("")
-          : '<p style="font-size: 20px; font-style: italic; color: #777; padding-left: 35px;">No hay canciones en este evento.</p>';
+          : '<p style="font-size: 18px; font-style: italic; color: #777; padding-left: 20px;">No hay canciones en este evento.</p>';
 
       const notesHtml = selectedEventDetails?.notes
-        ? `<div style="margin-top: 20px; font-size: 18px; text-align: left; background: #f4f4f4; padding: 10px; border-radius: 5px;"><strong>Anotaciones:</strong> ${selectedEventDetails.notes}</div>`
+        ? `<div style="margin-top: 20px; font-size: 16px; text-align: left; background: #f4f4f4; padding: 10px; border-radius: 5px; page-break-inside: avoid;"><strong>Anotaciones:</strong> ${selectedEventDetails.notes}</div>`
         : "";
+
+      // Detección del logo: Si la banda tiene logo_url cargado lo imprime, si no usa la caja BAND
+      const logoHtml = bandLogo
+        ? `<img src="${bandLogo}" style="width: 60px; height: 60px; object-fit: contain; border-radius: 6px;" />`
+        : `<div class="logo-box">BAND</div>`;
 
       const htmlContent = `
         <html>
           <head>
+            <meta charset="utf-8">
             <style>
-              @page { size: A4; margin: 10mm 20mm; }
-              body { font-family: 'Helvetica', Arial, sans-serif; padding: 15px; color: #111; text-align: center; }
-              .header-block { display: inline-flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px; }
-              .logo-box { width: 75px; height: 75px; background-color: #333; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; border-radius: 6px; font-size: 18px; }
-              .band-name { font-size: 30px; font-weight: bold; color: #000; text-align: left; }
-              .divider { border-bottom: 2px solid #333; margin-bottom: 12px; margin-top: 8px; width: 100%; }
-              .event-title { font-size: 22px; color: #222; margin-bottom: 4px; font-weight: bold; text-align: center; }
-              .event-date { font-size: 20px; color: #555; margin-bottom: 12px; text-align: center; }
-              .list-container { margin-top: 5px; width: 100%; text-align: left; }
+              @page { size: A4; margin: 15mm 20mm; }
+              body { font-family: 'Helvetica', Arial, sans-serif; padding: 10px; color: #111; text-align: center; background: #fff; }
+              .header-block { display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px; }
+              .logo-box { width: 60px; height: 60px; background-color: #333; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; border-radius: 6px; font-size: 16px; }
+              .band-name { font-size: 26px; font-weight: bold; color: #000; text-align: left; }
+              .divider { border-bottom: 2px solid #333; margin-bottom: 15px; margin-top: 10px; width: 100%; }
+              .event-title { font-size: 20px; color: #222; margin-bottom: 4px; font-weight: bold; text-align: center; }
+              .event-date { font-size: 16px; color: #555; margin-bottom: 15px; text-align: center; }
+              .list-container { width: 100%; text-align: left; }
+              
+              @media print {
+                body { -webkit-print-color-adjust: exact; }
+              }
             </style>
           </head>
           <body>
             <div style="width: 100%; display: flex; flex-direction: column; align-items: center;">
               <div class="header-block">
-                <div class="logo-box">BAND</div>
+                ${logoHtml}
                 <div class="band-name">${bandName}</div>
               </div>
 
@@ -309,7 +321,22 @@ export default function CalendarScreen() {
         </html>
       `;
 
-      await Print.printAsync({ html: htmlContent });
+      if (Platform.OS === "web") {
+        const printWindow = window.open("", "_blank");
+        if (printWindow) {
+          printWindow.document.write(htmlContent);
+          printWindow.document.close();
+          printWindow.focus();
+          setTimeout(() => {
+            printWindow.print();
+            printWindow.close();
+          }, 250);
+        } else {
+          showToast("El navegador bloqueó la ventana de impresión.");
+        }
+      } else {
+        await Print.printAsync({ html: htmlContent });
+      }
     } catch (error) {
       console.error("Error al imprimir:", error);
       showToast("No se pudo abrir la ventana de impresión.");
@@ -783,7 +810,6 @@ export default function CalendarScreen() {
                     ? "#ff9800"
                     : "#ffffff";
 
-              // Comprobar si el evento coincide exactamente con la fecha actual del sistema
               const isEventToday =
                 ev.day === currentDayToday &&
                 ev.month === currentMonthToday &&
@@ -885,7 +911,6 @@ export default function CalendarScreen() {
                         color="#ffffff"
                         style={{ marginRight: 5 }}
                       />
-                      {/* NUEVO: Muestra la hora y, si es hoy, añade "¡Hoy!" */}
                       <Text
                         style={[styles.miniEventTime, { color: "#ffffff" }]}
                       >
@@ -2094,6 +2119,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   modalTitleWhite: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#ffffff",
+  },
+  modalTitle: {
     fontSize: 20,
     fontWeight: "bold",
     color: "#ffffff",
