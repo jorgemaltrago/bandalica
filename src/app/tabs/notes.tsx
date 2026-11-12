@@ -3,15 +3,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Modal,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  Modal,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 export default function BandNotesScreen() {
@@ -23,13 +22,18 @@ export default function BandNotesScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Estados para el modal de crear nota
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newContent, setNewContent] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // Mensaje flotante (Toast)
+  // Estados para el Modal de Aviso de Eliminación personalizado
+  const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
+  const [noteToDelete, setNoteToDelete] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
+
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -38,9 +42,8 @@ export default function BandNotesScreen() {
   };
 
   useEffect(() => {
-    if (bandId) {
-      fetchNotes();
-    }
+    if (!bandId) return;
+    fetchNotes();
   }, [bandId]);
 
   const fetchNotes = async () => {
@@ -59,7 +62,7 @@ export default function BandNotesScreen() {
         `,
         )
         .eq("band_id", bandId)
-        .order("created_at", { ascending: false }); // Las más recientes primero
+        .order("created_at", { ascending: false });
 
       if (error) throw error;
       setNotes(data || []);
@@ -104,38 +107,37 @@ export default function BandNotesScreen() {
     }
   };
 
-  // Función para eliminar nota con confirmación
-  const handleDeleteNote = (noteId: string, noteTitle: string) => {
-    Alert.alert(
-      "Eliminar nota",
-      `¿Estás seguro de que quieres eliminar la nota "${noteTitle}"?`,
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Eliminar",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const { error } = await supabase
-                .from("band_notes")
-                .delete()
-                .eq("id", noteId);
-
-              if (error) throw error;
-
-              showToast("Nota eliminada correctamente.");
-              fetchNotes();
-            } catch (error: any) {
-              console.error("Error al eliminar nota:", error.message);
-              showToast("No se pudo eliminar la nota.");
-            }
-          },
-        },
-      ],
-    );
+  // Abre el modal de aviso personalizado en lugar de usar Alert.alert
+  const promptDeleteNote = (noteId: string, noteTitle: string) => {
+    setNoteToDelete({ id: noteId, title: noteTitle });
+    setIsDeleteModalVisible(true);
   };
 
-  // Formateador de fecha y hora legible
+  // Confirma y ejecuta el borrado contra Supabase actualizando la lista al instante
+  const confirmDeleteNote = async () => {
+    if (!noteToDelete) return;
+
+    try {
+      const { error } = await supabase
+        .from("band_notes")
+        .delete()
+        .eq("id", noteToDelete.id);
+
+      if (error) throw error;
+
+      // Actualizamos el estado local de inmediato para que desaparezca de la lista
+      setNotes((prevNotes) =>
+        prevNotes.filter((n) => n.id !== noteToDelete.id),
+      );
+      setIsDeleteModalVisible(false);
+      setNoteToDelete(null);
+      showToast("Nota eliminada correctamente.");
+    } catch (error: any) {
+      console.error("Error al eliminar nota:", error.message);
+      showToast("No se pudo eliminar la nota.");
+    }
+  };
+
   const formatDateTime = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleString("es-ES", {
@@ -147,9 +149,23 @@ export default function BandNotesScreen() {
     });
   };
 
+  // PANTALLA DE CARGA INICIAL SI EL BANDID AÚN NO LLEGÓ DEL LAYOUT
+  if (!bandId || loading) {
+    return (
+      <View
+        style={[
+          styles.container,
+          { justifyContent: "center", alignItems: "center" },
+        ]}
+      >
+        <ActivityIndicator size="large" color="#00bcd4" />
+        <Text style={{ color: "#aaa", marginTop: 10 }}>Cargando notas...</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      {/* MENSAJE FLOTANTE (TOAST) */}
       {toastMessage && (
         <View style={styles.toastContainer}>
           <Ionicons
@@ -162,7 +178,6 @@ export default function BandNotesScreen() {
         </View>
       )}
 
-      {/* CABECERA Y BOTÓN NUEVA NOTA */}
       <View style={styles.headerRow}>
         <View style={{ flexDirection: "row", alignItems: "center" }}>
           <Ionicons
@@ -187,12 +202,7 @@ export default function BandNotesScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* LISTA DE NOTAS */}
-      {loading ? (
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color="#00bcd4" />
-        </View>
-      ) : notes.length === 0 ? (
+      {notes.length === 0 ? (
         <View style={styles.centerContainer}>
           <Ionicons name="clipboard-outline" size={48} color="#444" />
           <Text style={styles.emptyText}>
@@ -218,10 +228,9 @@ export default function BandNotesScreen() {
                   </Text>
                 </View>
 
-                {/* BOTÓN DE ELIMINAR */}
                 <TouchableOpacity
                   style={styles.deleteIconButton}
-                  onPress={() => handleDeleteNote(item.id, item.title)}
+                  onPress={() => promptDeleteNote(item.id, item.title)}
                 >
                   <Ionicons name="trash-outline" size={18} color="#ff5252" />
                 </TouchableOpacity>
@@ -310,6 +319,93 @@ export default function BandNotesScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* MODAL DE AVISO: CONFIRMAR ELIMINAR NOTA */}
+      <Modal visible={isDeleteModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.modalContent,
+              {
+                borderColor: "#ff9800",
+                maxWidth: 400,
+                alignSelf: "center",
+                width: "100%",
+              },
+            ]}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginBottom: 10,
+              }}
+            >
+              <Ionicons
+                name="warning-outline"
+                size={26}
+                color="#ff9800"
+                style={{ marginRight: 8 }}
+              />
+              <Text
+                style={[
+                  styles.modalTitle,
+                  { color: "#ff9800", marginBottom: 0, textAlign: "left" },
+                ]}
+              >
+                Eliminar Nota
+              </Text>
+            </View>
+
+            <Text
+              style={{
+                color: "#fff",
+                fontSize: 15,
+                marginBottom: 20,
+                lineHeight: 22,
+              }}
+            >
+              ¿Estás seguro de que quieres eliminar la nota{" "}
+              <Text style={{ fontWeight: "bold", color: "#00bcd4" }}>
+                "{noteToDelete?.title}"
+              </Text>
+              ? Esta acción no se puede deshacer.
+            </Text>
+
+            <View style={styles.buttonRow}>
+              <TouchableOpacity
+                style={[
+                  styles.modalBtn,
+                  {
+                    backgroundColor: "#ffffff",
+                  },
+                ]}
+                onPress={() => {
+                  setIsDeleteModalVisible(false);
+                  setNoteToDelete(null);
+                }}
+              >
+                <Text
+                  style={{ color: "#000000", fontWeight: "bold", fontSize: 14 }}
+                >
+                  Volver
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: "#ff9800" }]}
+                onPress={confirmDeleteNote}
+              >
+                <Text
+                  style={{ color: "#000000", fontWeight: "bold", fontSize: 14 }}
+                >
+                  Eliminar
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -347,11 +443,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   addButtonText: { color: "#000", fontWeight: "bold", fontSize: 13 },
-  centerContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
+  centerContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   emptyText: {
     color: "#777",
     fontSize: 14,
@@ -442,6 +534,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     marginTop: 20,
+    gap: 8,
   },
   modalBtn: {
     flex: 1,

@@ -1,9 +1,13 @@
 import { supabase } from "@/services/supabase";
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import { useLocalSearchParams } from "expo-router";
+import * as Sharing from "expo-sharing";
+import JSZip from "jszip";
 import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Linking,
   Modal,
   ScrollView,
@@ -19,12 +23,18 @@ export default function RepertoireScreen() {
   const bandId = (params.bandId as string) || "";
   const userId = (params.userId as string) || "";
 
+  const [loading, setLoading] = useState(true);
   const [bandSongs, setBandSongs] = useState<any[]>([]);
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  // Estados para controlar los selectores flotantes de tonalidad y género
+  const [isExportModalVisible, setIsExportModalVisible] = useState(false);
+  const [selectedExportSongIds, setSelectedExportSongIds] = useState<string[]>(
+    [],
+  );
+  const [isExporting, setIsExporting] = useState(false);
+
   const [isKeyPickerVisible, setIsKeyPickerVisible] = useState(false);
   const [activeKeyTarget, setActiveKeyTarget] = useState<"new" | "edit">("new");
 
@@ -33,11 +43,9 @@ export default function RepertoireScreen() {
     "new",
   );
 
-  // ESTADO PARA EL MODAL DE CONFIRMACIÓN DE BORRADO DE CANCIÓN
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [songToDeleteId, setSongToDeleteId] = useState<string | null>(null);
 
-  // Estado para el mensaje flotante (Toast)
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -47,7 +55,6 @@ export default function RepertoireScreen() {
     }, 2500);
   };
 
-  // Mapeo de notas en inglés a español para mostrar y guardar
   const musicalKeysMap = [
     { label: "Do", value: "C" },
     { label: "Do#", value: "C#" },
@@ -78,14 +85,12 @@ export default function RepertoireScreen() {
     "Flamenco",
   ];
 
-  // Función de validación estricta para formato MM:SS (ej: 03:45 o 3:45)
   const isValidDurationFormat = (dur: string) => {
-    if (!dur.trim()) return true; // Si está vacío es opcional
+    if (!dur.trim()) return true;
     const regex = /^([0-5]?\d):([0-5]\d)$/;
     return regex.test(dur.trim());
   };
 
-  // Estados del formulario de creación
   const [newTitle, setNewTitle] = useState("");
   const [newAuthor, setNewAuthor] = useState("");
   const [newGenre, setNewGenre] = useState("Rock");
@@ -95,7 +100,6 @@ export default function RepertoireScreen() {
   const [newLyrics, setNewLyrics] = useState("");
   const [newPdfFile, setNewPdfFile] = useState<any>(null);
 
-  // Estados del formulario de edición
   const [selectedSong, setSelectedSong] = useState<any | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editAuthor, setEditAuthor] = useState("");
@@ -110,13 +114,13 @@ export default function RepertoireScreen() {
   );
 
   useEffect(() => {
-    if (bandId) {
-      loadRepertoire();
-    }
+    if (!bandId) return;
+    loadRepertoire();
   }, [bandId]);
 
   const loadRepertoire = async () => {
     try {
+      setLoading(true);
       const { data, error } = await supabase
         .from("songs")
         .select("*")
@@ -124,7 +128,6 @@ export default function RepertoireScreen() {
 
       if (error) throw error;
       if (data) {
-        // ORDENAR ALFABÉTICAMENTE LAS CANCIONES (A-Z)
         const sortedRepertory = data.sort((a, b) => {
           const titleA = (a.title || "").toLowerCase();
           const titleB = (b.title || "").toLowerCase();
@@ -134,10 +137,228 @@ export default function RepertoireScreen() {
       }
     } catch (error) {
       console.error("Error cargando repertorio:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Función para seleccionar PDF
+  const handleOpenExportModal = () => {
+    if (bandSongs.length === 0) {
+      showToast("No hay canciones para exportar.");
+      return;
+    }
+    setSelectedExportSongIds(bandSongs.map((s) => s.id));
+    setIsExportModalVisible(true);
+  };
+
+  const toggleExportSongSelection = (id: string) => {
+    if (selectedExportSongIds.includes(id)) {
+      setSelectedExportSongIds(
+        selectedExportSongIds.filter((sId) => sId !== id),
+      );
+    } else {
+      setSelectedExportSongIds([...selectedExportSongIds, id]);
+    }
+  };
+
+  const handleExecuteExport = async () => {
+    if (selectedExportSongIds.length === 0) {
+      showToast("Selecciona al menos una canción para exportar.");
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const zip = new JSZip();
+      const songsToExport = bandSongs.filter((s) =>
+        selectedExportSongIds.includes(s.id),
+      );
+      const exportedSongsData = [];
+
+      for (const song of songsToExport) {
+        let pdfBase64 = null;
+        if (song.pdf_url) {
+          try {
+            const pdfResp = await fetch(song.pdf_url);
+            const pdfBlob = await pdfResp.blob();
+            pdfBase64 = await new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result);
+              reader.readAsDataURL(pdfBlob);
+            });
+          } catch (e) {
+            console.error(
+              "No se pudo adjuntar el PDF de la canción:",
+              song.title,
+            );
+          }
+        }
+
+        exportedSongsData.push({
+          title: song.title,
+          author: song.author,
+          genre: song.genre,
+          key: song.key,
+          tempo: song.tempo,
+          duration: song.duration,
+          lyrics: song.lyrics,
+          pdfBase64: pdfBase64,
+        });
+      }
+
+      zip.file(
+        "repertorio_banda.json",
+        JSON.stringify(exportedSongsData, null, 2),
+      );
+
+      const content = await zip.generateAsync({ type: "base64" });
+      const zipPath = `${FileSystem.documentDirectory}repertorio_banda_${Date.now()}.zip`;
+      await FileSystem.writeAsStringAsync(zipPath, content, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(zipPath, {
+          mimeType: "application/zip",
+          dialogTitle: "Exportar repertorio de banda",
+          UTI: "public.zip-archive",
+        });
+      } else {
+        showToast("La compartición no está disponible en este dispositivo.");
+      }
+
+      setIsExportModalVisible(false);
+      showToast("¡Repertorio exportado en .zip con éxito!");
+    } catch (error) {
+      console.error(error);
+      showToast("Error al generar el archivo .zip.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleImportZip = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["application/zip", "application/x-zip-compressed", "*/*"],
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      setUploading(true);
+
+      const response = await fetch(asset.uri);
+      const blob = await response.blob();
+
+      const base64Data: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const resultStr = reader.result as string;
+          const base64Clean = resultStr.includes(",")
+            ? resultStr.split(",")[1]
+            : resultStr;
+          resolve(base64Clean);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+
+      const zip = new JSZip();
+      const loadedZip = await zip.loadAsync(base64Data, { base64: true });
+
+      const jsonFile = loadedZip.file("repertorio_banda.json");
+      if (!jsonFile) {
+        showToast(
+          "El archivo .zip no contiene el formato válido de Bandalica.",
+        );
+        setUploading(false);
+        return;
+      }
+
+      const jsonContent = await jsonFile.async("string");
+      const importedSongs = JSON.parse(jsonContent);
+
+      if (!Array.isArray(importedSongs)) {
+        showToast("El contenido del repertorio no es válido.");
+        setUploading(false);
+        return;
+      }
+
+      let addedCount = 0;
+
+      for (const item of importedSongs) {
+        let finalPdfUrl = null;
+
+        if (item.pdfBase64) {
+          try {
+            const base64CleanPdf =
+              item.pdfBase64.split(",")[1] || item.pdfBase64;
+            const fileName = `pdf_import_${Date.now()}_${Math.random()
+              .toString(36)
+              .substring(2, 7)}.pdf`;
+            const filePath = `pdf_lyrics/${fileName}`;
+
+            const byteCharacters = atob(base64CleanPdf);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+
+            const { error: uploadError } = await supabase.storage
+              .from("songs")
+              .upload(filePath, byteArray, {
+                contentType: "application/pdf",
+                upsert: true,
+              });
+
+            if (!uploadError) {
+              const { data: publicData } = supabase.storage
+                .from("songs")
+                .getPublicUrl(filePath);
+              finalPdfUrl = publicData.publicUrl;
+            }
+          } catch (e) {
+            console.error("Error al subir PDF importado:", e);
+          }
+        }
+
+        const songPayload: any = {
+          title: item.title || "Canción sin título",
+          author: item.author || null,
+          genre: item.genre || "Rock",
+          key: item.key || "C",
+          tempo: item.tempo || null,
+          duration: item.duration || null,
+          lyrics: item.lyrics || null,
+          pdf_url: finalPdfUrl,
+          band_id: bandId,
+          created_by: userId || null,
+        };
+
+        const { error: insertError } = await supabase
+          .from("songs")
+          .insert([songPayload]);
+
+        if (!insertError) {
+          addedCount++;
+        }
+      }
+
+      loadRepertoire();
+      showToast(`¡Se han importado ${addedCount} canciones correctamente!`);
+    } catch (error) {
+      console.error(error);
+      showToast("No se pudo procesar el archivo .zip.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const pickPdf = async (target: "new" | "edit") => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -158,7 +379,6 @@ export default function RepertoireScreen() {
     }
   };
 
-  // Función para abrir el PDF en el navegador o visor del sistema
   const handleOpenPdf = async (url: string) => {
     try {
       const supported = await Linking.canOpenURL(url);
@@ -172,7 +392,6 @@ export default function RepertoireScreen() {
     }
   };
 
-  // Función auxiliar para subir el PDF a Supabase Storage
   const uploadPdfToStorage = async (pdfAsset: any) => {
     const response = await fetch(pdfAsset.uri);
     const blob = await response.blob();
@@ -203,11 +422,6 @@ export default function RepertoireScreen() {
 
     if (!isValidDurationFormat(newDuration)) {
       showToast("Formato de duración incorrecto (ej: 03:45).");
-      return;
-    }
-
-    if (!bandId) {
-      showToast("No se ha detectado el ID de la banda.");
       return;
     }
 
@@ -349,6 +563,23 @@ export default function RepertoireScreen() {
     setIsEditModalVisible(true);
   };
 
+  // PANTALLA DE CARGA INICIAL SI EL BANDID AÚN NO LLEGÓ DEL LAYOUT
+  if (!bandId || loading) {
+    return (
+      <View
+        style={[
+          styles.container,
+          { justifyContent: "center", alignItems: "center" },
+        ]}
+      >
+        <ActivityIndicator size="large" color="#00bcd4" />
+        <Text style={{ color: "#aaa", marginTop: 10 }}>
+          Cargando repertorio...
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       {toastMessage && (
@@ -363,6 +594,7 @@ export default function RepertoireScreen() {
         </View>
       )}
 
+      {/* CABECERA CON EL TÍTULO Y EL NÚMERO DE CANCIONES */}
       <View
         style={{ flexDirection: "row", alignItems: "center", marginBottom: 15 }}
       >
@@ -372,7 +604,40 @@ export default function RepertoireScreen() {
           color="#00bcd4"
           style={{ marginRight: 8 }}
         />
-        <Text style={styles.headerTitle}>Repertorio de la Banda</Text>
+        <Text style={styles.headerTitle}>
+          Repertorio de la Banda ({bandSongs.length})
+        </Text>
+      </View>
+
+      <View style={styles.importExportRow}>
+        <TouchableOpacity
+          style={styles.importExportButton}
+          onPress={handleImportZip}
+          disabled={uploading}
+        >
+          <Ionicons
+            name="cloud-upload-outline"
+            size={18}
+            color="#00bcd4"
+            style={{ marginRight: 6 }}
+          />
+          <Text style={styles.importExportButtonText}>
+            {uploading ? "Importando..." : "Importar .zip"}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.importExportButton}
+          onPress={handleOpenExportModal}
+        >
+          <Ionicons
+            name="cloud-download-outline"
+            size={18}
+            color="#00bcd4"
+            style={{ marginRight: 6 }}
+          />
+          <Text style={styles.importExportButtonText}>Exportar .zip</Text>
+        </TouchableOpacity>
       </View>
 
       <TouchableOpacity
@@ -417,11 +682,9 @@ export default function RepertoireScreen() {
             >
               <View style={{ flex: 1, marginRight: 10 }}>
                 <Text style={styles.songTitle}>{song.title}</Text>
-
                 {song.author ? (
                   <Text style={styles.songAuthor}>{song.author}</Text>
                 ) : null}
-
                 {song.duration ? (
                   <Text style={styles.songDurationCard}>
                     ⏱️ Duración: {song.duration}
@@ -518,7 +781,82 @@ export default function RepertoireScreen() {
         ))
       )}
 
-      {/* MODAL PARA CREAR CANCIONES */}
+      {/* MODAL EXPORTAR */}
+      <Modal visible={isExportModalVisible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: "75%" }]}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginBottom: 12,
+              }}
+            >
+              <Ionicons
+                name="cloud-download-outline"
+                size={24}
+                color="#00bcd4"
+                style={{ marginRight: 8 }}
+              />
+              <Text style={styles.modalTitle}>
+                Seleccionar Canciones a Exportar
+              </Text>
+            </View>
+
+            <Text style={styles.exportSubtitle}>
+              Marca los temas que formarán parte del archivo .zip:
+            </Text>
+
+            <ScrollView style={styles.modalScrollList}>
+              {bandSongs.map((song) => {
+                const isSelected = selectedExportSongIds.includes(song.id);
+                return (
+                  <TouchableOpacity
+                    key={`export-song-${song.id}`}
+                    style={styles.modalSongItem}
+                    onPress={() => toggleExportSongSelection(song.id)}
+                  >
+                    <Text style={styles.modalSongTitle} numberOfLines={1}>
+                      {song.title}
+                    </Text>
+                    <View
+                      style={[
+                        styles.roundRadioCheck,
+                        isSelected && styles.roundRadioCheckActive,
+                      ]}
+                    >
+                      {isSelected && (
+                        <View style={styles.roundRadioCheckInner} />
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <View style={styles.buttonRowContainer}>
+              <TouchableOpacity
+                style={styles.actionBtnSave}
+                onPress={handleExecuteExport}
+                disabled={isExporting}
+              >
+                <Text style={styles.actionBtnTextDark}>
+                  {isExporting ? "Generando ZIP..." : "Generar y Exportar .zip"}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.actionBtnCancel}
+                onPress={() => setIsExportModalVisible(false)}
+              >
+                <Text style={styles.actionBtnTextDark}>Cancelar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL AÑADIR */}
       <Modal visible={isAddModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -687,7 +1025,7 @@ export default function RepertoireScreen() {
         </View>
       </Modal>
 
-      {/* MODAL PARA EDITAR Y VER DETALLES DE LA CANCIÓN */}
+      {/* MODAL EDITAR */}
       <Modal visible={isEditModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -896,7 +1234,7 @@ export default function RepertoireScreen() {
         </View>
       </Modal>
 
-      {/* MODAL SELECCIONAR GÉNERO */}
+      {/* MODAL GÉNERO */}
       <Modal visible={isGenrePickerVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { maxHeight: "55%" }]}>
@@ -944,7 +1282,7 @@ export default function RepertoireScreen() {
         </View>
       </Modal>
 
-      {/* MODAL SELECCIONAR TONALIDAD */}
+      {/* MODAL TONALIDAD */}
       <Modal visible={isKeyPickerVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { paddingBottom: 16 }]}>
@@ -992,7 +1330,7 @@ export default function RepertoireScreen() {
         </View>
       </Modal>
 
-      {/* MODAL DE CONFIRMACIÓN PARA BORRAR CANCIÓN (BORRAR EN NARANJA, VOLVER EN BLANCO) */}
+      {/* MODAL BORRAR CANCIÓN */}
       <Modal visible={isDeleteModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View
@@ -1035,7 +1373,6 @@ export default function RepertoireScreen() {
                 gap: 8,
               }}
             >
-              {/* BOTÓN VOLVER EN BLANCO CON TEXTO NEGRO */}
               <TouchableOpacity
                 style={[
                   styles.modalCloseButtonWhiteStyle,
@@ -1048,7 +1385,6 @@ export default function RepertoireScreen() {
                 </Text>
               </TouchableOpacity>
 
-              {/* BOTÓN BORRAR EN NARANJA */}
               <TouchableOpacity
                 style={[
                   styles.modalCloseButtonDanger,
@@ -1082,15 +1418,30 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     width: "100%",
   },
-  toastText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "bold",
+  toastText: { color: "#fff", fontSize: 15, fontWeight: "bold" },
+  headerTitle: { fontSize: 22, fontWeight: "bold", color: "#fff" },
+  importExportRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+    marginBottom: 12,
   },
-  headerTitle: {
-    fontSize: 22,
+  importExportButton: {
+    flex: 1,
+    backgroundColor: "#1e1e1e",
+    borderWidth: 1,
+    borderColor: "#00bcd4",
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  importExportButtonText: {
+    color: "#ffffff",
     fontWeight: "bold",
-    color: "#fff",
+    fontSize: 14,
   },
   primaryButton: {
     backgroundColor: "#00bcd4",
@@ -1136,15 +1487,8 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginBottom: 6,
   },
-  rightActionGrid: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 16,
-  },
-  rightColumnItem: {
-    alignItems: "center",
-    minWidth: 32,
-  },
+  rightActionGrid: { flexDirection: "row", alignItems: "flex-start", gap: 16 },
+  rightColumnItem: { alignItems: "center", minWidth: 32 },
   songMetaColumn: {
     color: "#aaa",
     fontSize: 13,
@@ -1164,11 +1508,7 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     marginTop: 2,
   },
-  pdfBadgeText: {
-    color: "#00bcd4",
-    fontSize: 13,
-    fontWeight: "bold",
-  },
+  pdfBadgeText: { color: "#00bcd4", fontSize: 13, fontWeight: "bold" },
   notesBadgeButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -1181,11 +1521,7 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     marginTop: 2,
   },
-  notesBadgeText: {
-    color: "#00bcd4",
-    fontSize: 13,
-    fontWeight: "bold",
-  },
+  notesBadgeText: { color: "#00bcd4", fontSize: 13, fontWeight: "bold" },
   consultPdfButton: {
     backgroundColor: "#00bcd4",
     flexDirection: "row",
@@ -1195,11 +1531,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 12,
   },
-  consultPdfButtonText: {
-    color: "#000",
-    fontWeight: "bold",
-    fontSize: 14,
-  },
+  consultPdfButtonText: { color: "#000", fontWeight: "bold", fontSize: 14 },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.8)",
@@ -1214,11 +1546,43 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#00bcd4",
   },
-  modalTitle: {
-    fontSize: 21,
-    fontWeight: "bold",
-    color: "#00bcd4",
+  exportSubtitle: { color: "#aaa", fontSize: 14, marginBottom: 10 },
+  modalScrollList: { maxHeight: 280, marginBottom: 12 },
+  modalSongItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#121212",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: "#333",
   },
+  modalSongTitle: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "bold",
+    flex: 1,
+    marginRight: 10,
+  },
+  roundRadioCheck: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: "#00bcd4",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  roundRadioCheckActive: { borderColor: "#00bcd4" },
+  roundRadioCheckInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "#00bcd4",
+  },
+  modalTitle: { fontSize: 21, fontWeight: "bold", color: "#00bcd4" },
   label: { fontSize: 16, color: "#aaa", marginBottom: 6, marginTop: 6 },
   labelSmall: { fontSize: 13, color: "#aaa", marginBottom: 4, marginTop: 4 },
   input: {
@@ -1249,9 +1613,7 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 6,
   },
-  rowTripleItem: {
-    flex: 1,
-  },
+  rowTripleItem: { flex: 1 },
   pickerButtonCompact: {
     backgroundColor: "#121212",
     borderWidth: 1,
@@ -1279,11 +1641,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 12,
   },
-  pdfPickerText: {
-    color: "#00bcd4",
-    fontSize: 15,
-    flex: 1,
-  },
+  pdfPickerText: { color: "#00bcd4", fontSize: 15, flex: 1 },
   keysGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1305,11 +1663,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#333",
   },
-  keyChipTextCompact: {
-    color: "#aaa",
-    fontWeight: "bold",
-    fontSize: 15,
-  },
+  keyChipTextCompact: { color: "#aaa", fontWeight: "bold", fontSize: 15 },
   genreChip: {
     width: "48%",
     backgroundColor: "#121212",
@@ -1320,18 +1674,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#333",
   },
-  keyChipSelected: {
-    backgroundColor: "#00bcd4",
-    borderColor: "#00bcd4",
-  },
-  keyChipText: {
-    color: "#aaa",
-    fontWeight: "bold",
-    fontSize: 18,
-  },
-  keyChipTextSelected: {
-    color: "#000",
-  },
+  keyChipSelected: { backgroundColor: "#00bcd4", borderColor: "#00bcd4" },
+  keyChipText: { color: "#aaa", fontWeight: "bold", fontSize: 18 },
+  keyChipTextSelected: { color: "#000" },
   smallBackButton: {
     backgroundColor: "#ff9800",
     paddingVertical: 8,
@@ -1380,14 +1725,8 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     alignItems: "center",
   },
-  actionBtnTextDark: {
-    color: "#000",
-    fontWeight: "bold",
-    fontSize: 14,
-  },
-  iconButtonAction: {
-    padding: 4,
-  },
+  actionBtnTextDark: { color: "#000", fontWeight: "bold", fontSize: 14 },
+  iconButtonAction: { padding: 4 },
   modalCloseButtonDanger: {
     backgroundColor: "#ff9800",
     padding: 14,
@@ -1396,11 +1735,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginTop: 4,
   },
-  modalCloseButtonText: {
-    color: "#000",
-    fontWeight: "bold",
-    fontSize: 15,
-  },
+  modalCloseButtonText: { color: "#000", fontWeight: "bold", fontSize: 15 },
   modalCloseButtonWhiteStyle: {
     backgroundColor: "#ffffff",
     padding: 14,

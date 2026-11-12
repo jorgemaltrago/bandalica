@@ -61,11 +61,8 @@ export default function BandInfoScreen() {
   };
 
   useEffect(() => {
-    if (bandId) {
-      loadBandInfo();
-    } else {
-      setLoading(false);
-    }
+    if (!bandId) return;
+    loadBandInfo();
   }, [bandId]);
 
   const loadBandInfo = async () => {
@@ -204,13 +201,9 @@ export default function BandInfoScreen() {
   // --- ELIMINAR BANDA Y SUS DATOS ASSOCIADOS ---
   const handleDeleteBand = async () => {
     try {
-      // 1. Eliminar miembros de la banda
       await supabase.from("band_members").delete().eq("band_id", bandId);
-
-      // 2. Eliminar canciones del repertorio de la banda
       await supabase.from("songs").delete().eq("band_id", bandId);
 
-      // 3. Eliminar la banda de la tabla bands
       const { error } = await supabase.from("bands").delete().eq("id", bandId);
 
       if (error) throw error;
@@ -218,7 +211,6 @@ export default function BandInfoScreen() {
       setIsDeleteModalVisible(false);
       showToast("Banda eliminada correctamente");
 
-      // Redirigir al dashboard tras un breve instante
       setTimeout(() => {
         router.replace("/dashboard" as any);
       }, 1500);
@@ -228,14 +220,14 @@ export default function BandInfoScreen() {
     }
   };
 
-  // --- FUNCIÓN PARA COPIAR USANDO EL TOAST FLOTANTE ---
   const handleCopyCode = (code: string) => {
     if (!code) return;
     Clipboard.setString(code);
     showToast(`¡Código "${code}" copiado al portapapeles!`);
   };
 
-  if (loading) {
+  // PANTALLA DE CARGA INICIAL SI EL BANDID AÚN NO LLEGÓ DEL LAYOUT
+  if (!bandId || loading) {
     return (
       <View
         style={[
@@ -253,7 +245,6 @@ export default function BandInfoScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      {/* MENSAJE FLOTANTE (TOAST) */}
       {toastMessage && (
         <View style={styles.toastContainer}>
           <Ionicons
@@ -268,8 +259,6 @@ export default function BandInfoScreen() {
 
       <View style={styles.headerContainer}>
         <View style={{ flex: 1 }} />
-
-        {/* BOTONES DE ACCIÓN PARA EL CREADOR (CON TEXTO A LA IZQUIERDA DE CADA ICONO) */}
         {isCreator && (
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <TouchableOpacity
@@ -298,7 +287,6 @@ export default function BandInfoScreen() {
 
       {bandInfo ? (
         <View style={styles.card}>
-          {/* LOGOTIPO DE LA BANDA */}
           <View style={{ alignItems: "center", marginBottom: 20 }}>
             {bandInfo.logo_url ? (
               <Image
@@ -355,7 +343,6 @@ export default function BandInfoScreen() {
             </View>
           ) : null}
 
-          {/* CÓDIGO DE INVITACIÓN COPIABLE (VISIBLE SOLO PARA EL CREADOR) */}
           {isCreator && (
             <TouchableOpacity
               style={styles.codeContainer}
@@ -392,14 +379,13 @@ export default function BandInfoScreen() {
         </Text>
       )}
 
-      {/* MODAL PARA EDITAR LA INFORMACIÓN DE LA BANDA */}
+      {/* MODAL EDITAR BANDA */}
       <Modal visible={isEditModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <ScrollView contentContainerStyle={{ paddingVertical: 20 }}>
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>Editar Banda</Text>
 
-              {/* LOGO EDITABLE */}
               <View style={{ alignItems: "center", marginBottom: 15 }}>
                 <TouchableOpacity
                   style={styles.logoContainerModal}
@@ -487,7 +473,7 @@ export default function BandInfoScreen() {
         </View>
       </Modal>
 
-      {/* VENTANA FLOTANTE DE CONFIRMACIÓN PARA EL BORRADO DE LA BANDA */}
+      {/* MODAL BORRAR BANDA */}
       <Modal visible={isDeleteModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { borderColor: "#ff9800" }]}>
@@ -541,7 +527,7 @@ export default function BandInfoScreen() {
         </View>
       </Modal>
 
-      {/* VENTANA FLOTANTE (SUB-MODAL) PARA SELECCIONAR EL GÉNERO */}
+      {/* MODAL GÉNERO */}
       <Modal visible={isGenrePickerVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { maxHeight: "55%" }]}>
@@ -605,11 +591,7 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     width: "100%",
   },
-  toastText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "bold",
-  },
+  toastText: { color: "#fff", fontSize: 15, fontWeight: "bold" },
   headerContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -664,14 +646,8 @@ const styles = StyleSheet.create({
     borderBottomColor: "#2a2a2a",
     paddingBottom: 12,
   },
-  rowInvite: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  icon: {
-    marginRight: 14,
-  },
+  rowInvite: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
+  icon: { marginRight: 14 },
   label: {
     color: "#888",
     fontSize: 12,
@@ -679,11 +655,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     fontWeight: "600",
   },
-  value: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "bold",
-  },
+  value: { color: "#fff", fontSize: 18, fontWeight: "bold" },
   bioValue: {
     color: "#ccc",
     fontSize: 14,
@@ -711,12 +683,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     marginTop: 2,
   },
-  codeTip: {
-    color: "#aaa",
-    fontSize: 12,
-    fontStyle: "italic",
-    marginTop: 6,
-  },
+  codeTip: { color: "#aaa", fontSize: 12, fontStyle: "italic", marginTop: 6 },
   emptyText: {
     color: "#666",
     textAlign: "center",
@@ -751,11 +718,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     lineHeight: 20,
   },
-  inputLabel: {
-    color: "#aaa",
-    fontSize: 12,
-    marginBottom: 4,
-  },
+  inputLabel: { color: "#aaa", fontSize: 12, marginBottom: 4 },
   input: {
     backgroundColor: "#121212",
     borderWidth: 1,
@@ -777,11 +740,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 12,
   },
-  pickerButtonText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "600",
-  },
+  pickerButtonText: { color: "#fff", fontSize: 14, fontWeight: "600" },
   keysGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -797,18 +756,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#333",
   },
-  keyChipSelected: {
-    backgroundColor: "#00bcd4",
-    borderColor: "#00bcd4",
-  },
-  keyChipText: {
-    color: "#aaa",
-    fontWeight: "bold",
-    fontSize: 15,
-  },
-  keyChipTextSelected: {
-    color: "#000",
-  },
+  keyChipSelected: { backgroundColor: "#00bcd4", borderColor: "#00bcd4" },
+  keyChipText: { color: "#aaa", fontWeight: "bold", fontSize: 15 },
+  keyChipTextSelected: { color: "#000" },
   smallBackButton: {
     backgroundColor: "#ff9800",
     paddingVertical: 8,
@@ -830,11 +780,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     position: "relative",
   },
-  logoImg: {
-    width: "100%",
-    height: "100%",
-    resizeMode: "cover",
-  },
+  logoImg: { width: "100%", height: "100%", resizeMode: "cover" },
   editBadge: {
     position: "absolute",
     bottom: 0,
@@ -843,11 +789,7 @@ const styles = StyleSheet.create({
     padding: 6,
     borderTopLeftRadius: 10,
   },
-  tipText: {
-    color: "#aaa",
-    fontSize: 12,
-    marginTop: 6,
-  },
+  tipText: { color: "#aaa", fontSize: 12, marginTop: 6 },
   buttonRowContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -887,9 +829,5 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     alignItems: "center",
   },
-  actionBtnTextDark: {
-    color: "#000",
-    fontWeight: "bold",
-    fontSize: 14,
-  },
+  actionBtnTextDark: { color: "#000", fontWeight: "bold", fontSize: 14 },
 });

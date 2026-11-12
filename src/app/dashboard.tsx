@@ -7,7 +7,9 @@ import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  Linking,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,6 +19,16 @@ import {
 } from "react-native";
 
 const ADMIN_EMAIL = "jorgemaltrago@gmail.com";
+const SYNCED_EVENTS_FILE = `${FileSystem.documentDirectory}google_calendar_synced_events.json`;
+
+interface SyncedGoogleEvent {
+  id: string;
+  name: string;
+  bandName: string;
+  dateString: string;
+  time: string;
+  timestamp: number;
+}
 
 export default function DashboardScreen() {
   const router = useRouter();
@@ -32,6 +44,15 @@ export default function DashboardScreen() {
   );
   const [isEventDetailsModalVisible, setIsEventDetailsModalVisible] =
     useState(false);
+
+  // Estados para sincronización con Google Calendar y detección de borrados
+  const [syncedGoogleEvents, setSyncedGoogleEvents] = useState<
+    SyncedGoogleEvent[]
+  >([]);
+  const [selectedReminderMinutes, setSelectedReminderMinutes] =
+    useState<number>(60);
+  const [deletedSyncedEventAlert, setDeletedSyncedEventAlert] =
+    useState<SyncedGoogleEvent | null>(null);
 
   // Estado para las tareas pendientes del Administrador
   const [adminPendingCount, setAdminPendingCount] = useState(0);
@@ -113,11 +134,192 @@ export default function DashboardScreen() {
     "Domingo",
   ];
 
+  const reminderOptions = [
+    { label: "Sin aviso", minutes: 0 },
+    { label: "30 min", minutes: 30 },
+    { label: "1 hora", minutes: 60 },
+    { label: "2 horas", minutes: 120 },
+    { label: "1 día", minutes: 1440 },
+  ];
+
   useEffect(() => {
-    loadUserDataAndBands();
+    initializeDashboard();
   }, []);
 
-  const loadUserDataAndBands = async () => {
+  const initializeDashboard = async () => {
+    const savedSynced = await readSyncedEventsFromStorage();
+    await loadUserDataAndBands(savedSynced);
+  };
+
+  const readSyncedEventsFromStorage = async (): Promise<
+    SyncedGoogleEvent[]
+  > => {
+    try {
+      if (Platform.OS === "web") {
+        const stored = localStorage.getItem("google_calendar_synced_events");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            setSyncedGoogleEvents(parsed);
+            return parsed;
+          }
+        }
+        return [];
+      }
+
+      const fileInfo = await FileSystem.getInfoAsync(SYNCED_EVENTS_FILE);
+      if (fileInfo.exists) {
+        const content = await FileSystem.readAsStringAsync(SYNCED_EVENTS_FILE);
+        const parsed = JSON.parse(content);
+        if (Array.isArray(parsed)) {
+          const normalized: SyncedGoogleEvent[] = parsed
+            .map((item: any) =>
+              typeof item === "string"
+                ? {
+                    id: item,
+                    name: "Evento de banda",
+                    bandName: "Banda",
+                    dateString: "",
+                    time: "",
+                    timestamp: Date.now() + 86400000,
+                  }
+                : item,
+            )
+            .filter((item: any) => item && item.id);
+
+          setSyncedGoogleEvents(normalized);
+          return normalized;
+        }
+      }
+    } catch (e) {
+      // Ignorar errores de almacenamiento
+    }
+    return [];
+  };
+
+  const persistSyncedEvents = async (list: SyncedGoogleEvent[]) => {
+    setSyncedGoogleEvents(list);
+    try {
+      if (Platform.OS === "web") {
+        localStorage.setItem(
+          "google_calendar_synced_events",
+          JSON.stringify(list),
+        );
+        return;
+      }
+      await FileSystem.writeAsStringAsync(
+        SYNCED_EVENTS_FILE,
+        JSON.stringify(list),
+      );
+    } catch (e) {
+      // Entorno sin soporte de archivos
+    }
+  };
+
+  const markEventAsSyncedWithGoogle = async (event: any) => {
+    const entry: SyncedGoogleEvent = {
+      id: event.id,
+      name: event.name,
+      bandName: event.bandName || "Banda",
+      dateString: event.dateString || "",
+      time: event.time || "",
+      timestamp: event.eventDateTimeObj
+        ? event.eventDateTimeObj.getTime()
+        : Date.now(),
+    };
+
+    const filtered = syncedGoogleEvents.filter((item) => item.id !== event.id);
+    const updated = [...filtered, entry];
+    await persistSyncedEvents(updated);
+  };
+
+  const handleDismissDeletedEventAlert = async (openCalendar: boolean) => {
+    if (deletedSyncedEventAlert) {
+      const updated = syncedGoogleEvents.filter(
+        (item) => item.id !== deletedSyncedEventAlert.id,
+      );
+      await persistSyncedEvents(updated);
+    }
+    setDeletedSyncedEventAlert(null);
+
+    if (openCalendar) {
+      Linking.openURL("https://calendar.google.com/").catch(() =>
+        showToast("No se pudo abrir Google Calendar."),
+      );
+    }
+  };
+
+  const handleAddToGoogleCalendar = async (event: any) => {
+    if (!event?.eventDateTimeObj) return;
+
+    const isCurrentSynced = syncedGoogleEvents.some(
+      (item) => item.id === event.id,
+    );
+
+    if (isCurrentSynced) {
+      const updated = syncedGoogleEvents.filter((item) => item.id !== event.id);
+      await persistSyncedEvents(updated);
+      showToast("Marcado como no sincronizado.");
+      return;
+    }
+
+    try {
+      const startDate: Date = event.eventDateTimeObj;
+      const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
+
+      const formatGoogleDate = (d: Date) =>
+        d.toISOString().replace(/-|:|\.\d\d\d/g, "");
+
+      const title = encodeURIComponent(
+        `[${event.bandName}] ${event.name} (${event.type})`,
+      );
+
+      const songsText =
+        event.songsOrderedList && event.songsOrderedList.length > 0
+          ? `\n\nRepertorio:\n${event.songsOrderedList
+              .map((s: any, idx: number) => `${idx + 1}. ${s.title}`)
+              .join("\n")}`
+          : "";
+
+      const reminderLabel =
+        reminderOptions.find((r) => r.minutes === selectedReminderMinutes)
+          ?.label || "1 hora";
+
+      const reminderNote =
+        selectedReminderMinutes > 0
+          ? `\nRecordatorio configurado: ${reminderLabel} antes.`
+          : "";
+
+      const details = encodeURIComponent(
+        `Evento de ${event.bandName} gestionado con Bandalica.${reminderNote}${songsText}`,
+      );
+
+      const dates = `${formatGoogleDate(startDate)}/${formatGoogleDate(endDate)}`;
+
+      const googleCalendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dates}&details=${details}`;
+
+      const supported = await Linking.canOpenURL(googleCalendarUrl);
+      if (supported) {
+        await Linking.openURL(googleCalendarUrl);
+        await markEventAsSyncedWithGoogle(event);
+        if (Platform.OS === "web") {
+          showToast(
+            "Se abrió Google Calendar. (Asegúrate de tener sesión iniciada en Google)",
+          );
+        } else {
+          showToast("Google Calendar abierto. Estado actualizado.");
+        }
+      } else {
+        showToast("No se pudo abrir el enlace de Google Calendar.");
+      }
+    } catch (error) {
+      showToast("No se pudo abrir Google Calendar.");
+    }
+  };
+
+  const loadUserDataAndBands = async (
+    currentSyncedList: SyncedGoogleEvent[] = syncedGoogleEvents,
+  ) => {
     try {
       setLoading(true);
 
@@ -185,9 +387,10 @@ export default function DashboardScreen() {
         setBands(userBands);
 
         const bandIds = userBands.map((b: any) => b.id);
-        if (bandIds.length > 0) {
-          const now = new Date(); // Hora y fecha actual exacta para filtrar eventos expirados
+        const now = new Date();
+        let activeFutureEventIds: string[] = [];
 
+        if (bandIds.length > 0) {
           const { data: eventsData, error: eventError } = await supabase
             .from("events")
             .select(
@@ -246,20 +449,39 @@ export default function DashboardScreen() {
                 };
               })
               .filter((ev: any) => {
-                // FILTRO ESTRICTO: Ocultar eventos cuya fecha y hora ya hayan pasado
                 return ev.eventDateTimeObj >= now;
               });
 
-            // ORDENACIÓN: Primero los más cercanos cronológicamente
             formattedEvents.sort(
               (a: any, b: any) =>
                 a.eventDateTimeObj.getTime() - b.eventDateTimeObj.getTime(),
             );
 
             setUpcomingEvents(formattedEvents);
+            activeFutureEventIds = formattedEvents.map((e: any) => e.id);
           }
         } else {
           setUpcomingEvents([]);
+        }
+
+        // Comprobación de eventos borrados
+        if (currentSyncedList.length > 0) {
+          const nowMs = now.getTime();
+          const stillFutureSynced = currentSyncedList.filter(
+            (item) => item.timestamp >= nowMs,
+          );
+
+          if (stillFutureSynced.length !== currentSyncedList.length) {
+            await persistSyncedEvents(stillFutureSynced);
+          }
+
+          const deletedFutureEvent = stillFutureSynced.find(
+            (item) => !activeFutureEventIds.includes(item.id),
+          );
+
+          if (deletedFutureEvent) {
+            setDeletedSyncedEventAlert(deletedFutureEvent);
+          }
         }
       }
     } catch (error: any) {
@@ -269,7 +491,6 @@ export default function DashboardScreen() {
     }
   };
 
-  // Subir avatar del usuario
   const handlePickAndUploadAvatar = async () => {
     try {
       const permissionResult =
@@ -333,7 +554,6 @@ export default function DashboardScreen() {
     }
   };
 
-  // Subir logo de la banda
   const handlePickAndUploadBandLogo = async () => {
     try {
       const permissionResult =
@@ -589,6 +809,23 @@ export default function DashboardScreen() {
     });
   };
 
+  // PANTALLA DE CARGA INICIAL
+  if (loading) {
+    return (
+      <View
+        style={[
+          styles.container,
+          { justifyContent: "center", alignItems: "center", flex: 1 },
+        ]}
+      >
+        <ActivityIndicator size="large" color="#00bcd4" />
+        <Text style={{ color: "#aaa", marginTop: 10 }}>
+          Cargando dashboard...
+        </Text>
+      </View>
+    );
+  }
+
   const avatarSource = userProfile?.avatar_url;
   const userBio = userProfile?.bio;
 
@@ -760,9 +997,7 @@ export default function DashboardScreen() {
       </View>
 
       {/* LISTA DE BANDAS */}
-      {loading ? (
-        <Text style={styles.loadingText}>Cargando bandas...</Text>
-      ) : bands.length === 0 ? (
+      {bands.length === 0 ? (
         <Text style={styles.emptyText}>
           Todavía no perteneces a ninguna banda.
         </Text>
@@ -837,6 +1072,10 @@ export default function DashboardScreen() {
                   : ev.type === "Ensayo"
                     ? "#00bcd4"
                     : "#ffffff";
+
+              const isSyncedInGoogle = syncedGoogleEvents.some(
+                (item) => item.id === ev.id,
+              );
 
               return (
                 <TouchableOpacity
@@ -930,12 +1169,115 @@ export default function DashboardScreen() {
                       <Text style={styles.miniEventDate}>{ev.dateString}</Text>
                     </View>
                   </View>
+
+                  {/* INDICADOR DE AÑADIDO A GOOGLE CALENDAR */}
+                  {isSyncedInGoogle && (
+                    <View style={styles.googleSyncedBadgeRow}>
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={15}
+                        color="#4caf50"
+                        style={{ marginRight: 5 }}
+                      />
+                      <Text style={styles.googleSyncedBadgeText}>
+                        Añadido a Google Calendar
+                      </Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
               );
             })
           )}
         </View>
       )}
+
+      {/* MODAL DE AVISO: EVENTO CANCELADO QUE ESTABA EN GOOGLE CALENDAR */}
+      <Modal
+        visible={deletedSyncedEventAlert !== null}
+        transparent
+        animationType="fade"
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { borderColor: "#ff9800" }]}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginBottom: 12,
+              }}
+            >
+              <Ionicons
+                name="warning-outline"
+                size={28}
+                color="#ff9800"
+                style={{ marginRight: 10 }}
+              />
+              <Text
+                style={[styles.modalTitleWhite, { color: "#ff9800", flex: 1 }]}
+              >
+                Evento Eliminado en la Banda
+              </Text>
+            </View>
+
+            <Text style={styles.deletedAlertBodyText}>
+              El evento{" "}
+              <Text style={{ fontWeight: "bold", color: "#ffffff" }}>
+                "{deletedSyncedEventAlert?.name}"
+              </Text>{" "}
+              de{" "}
+              <Text style={{ fontWeight: "bold", color: "#00bcd4" }}>
+                {deletedSyncedEventAlert?.bandName}
+              </Text>{" "}
+              {deletedSyncedEventAlert?.dateString
+                ? `(${deletedSyncedEventAlert.dateString} - ${deletedSyncedEventAlert.time})`
+                : ""}{" "}
+              ha sido eliminado de la aplicación, pero lo tenías guardado en tu{" "}
+              <Text style={{ fontWeight: "bold", color: "#4caf50" }}>
+                Google Calendar
+              </Text>
+              .
+            </Text>
+
+            <Text style={styles.deletedAlertSubText}>
+              ¿Deseas acceder a Google Calendar ahora para borrarlo también de
+              tu agenda?
+            </Text>
+
+            <TouchableOpacity
+              style={[
+                styles.googleCalendarButton,
+                {
+                  backgroundColor: "#ff9800",
+                  borderColor: "#ff9800",
+                  marginBottom: 8,
+                },
+              ]}
+              onPress={() => handleDismissDeletedEventAlert(true)}
+            >
+              <Ionicons
+                name="calendar-outline"
+                size={18}
+                color="#000000"
+                style={{ marginRight: 8 }}
+              />
+              <Text
+                style={[styles.googleCalendarButtonText, { color: "#000000" }]}
+              >
+                Acceder a Google Calendar para borrarlo
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalCloseButtonWhite}
+              onPress={() => handleDismissDeletedEventAlert(false)}
+            >
+              <Text style={styles.modalCloseButtonWhiteText}>
+                Ya lo he borrado / Descartar
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* MODAL: DETALLES DEL EVENTO */}
       <Modal
@@ -951,6 +1293,12 @@ export default function DashboardScreen() {
               : eventType === "Ensayo"
                 ? "#00bcd4"
                 : "#ffffff";
+
+          const isCurrentEventSynced = selectedEventDetails
+            ? syncedGoogleEvents.some(
+                (item) => item.id === selectedEventDetails.id,
+              )
+            : false;
 
           return (
             <View style={styles.modalOverlay}>
@@ -1074,6 +1422,92 @@ export default function DashboardScreen() {
                   )}
                 </ScrollView>
 
+                {/* ZONA DE GOOGLE CALENDAR Y RECORDATORIO */}
+                <View style={styles.googleCalendarBox}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      marginBottom: 8,
+                    }}
+                  >
+                    <Ionicons
+                      name="notifications-outline"
+                      size={16}
+                      color="#00bcd4"
+                      style={{ marginRight: 6 }}
+                    />
+                    <Text style={styles.googleReminderLabel}>
+                      Aviso / Recordatorio previo:
+                    </Text>
+                  </View>
+
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={{ marginBottom: 10 }}
+                  >
+                    {reminderOptions.map((opt) => {
+                      const isSelected =
+                        selectedReminderMinutes === opt.minutes;
+                      return (
+                        <TouchableOpacity
+                          key={opt.minutes}
+                          style={[
+                            styles.reminderChip,
+                            isSelected && styles.reminderChipActive,
+                          ]}
+                          onPress={() =>
+                            setSelectedReminderMinutes(opt.minutes)
+                          }
+                        >
+                          <Text
+                            style={[
+                              styles.reminderChipText,
+                              isSelected && styles.reminderChipTextActive,
+                            ]}
+                          >
+                            {opt.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.googleCalendarButton,
+                      isCurrentEventSynced && styles.googleCalendarButtonSynced,
+                    ]}
+                    onPress={() =>
+                      handleAddToGoogleCalendar(selectedEventDetails)
+                    }
+                  >
+                    <Ionicons
+                      name={
+                        isCurrentEventSynced
+                          ? "checkmark-circle"
+                          : "calendar-outline"
+                      }
+                      size={18}
+                      color={isCurrentEventSynced ? "#4caf50" : "#ffffff"}
+                      style={{ marginRight: 8 }}
+                    />
+                    <Text
+                      style={[
+                        styles.googleCalendarButtonText,
+                        isCurrentEventSynced && { color: "#4caf50" },
+                      ]}
+                    >
+                      {isCurrentEventSynced
+                        ? "Guardado en Google (Toca para desmarcar)"
+                        : Platform.OS === "web"
+                          ? "Añadir a Google Calendar (Abrirá pestaña)"
+                          : "Añadir a Google Calendar"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
                 <TouchableOpacity
                   style={[
                     styles.modalCloseButtonDynamic,
@@ -1096,18 +1530,29 @@ export default function DashboardScreen() {
         })()}
       </Modal>
 
-      {/* MODAL PARA EDITAR PERFIL */}
+      {/* MODAL PARA EDITAR PERFIL (ACTUALIZADO CON MAX-HEIGHT Y SCROLL) */}
       <Modal
         visible={isEditProfileModalVisible}
         transparent
         animationType="slide"
       >
         <View style={styles.modalOverlay}>
-          <ScrollView contentContainerStyle={{ paddingVertical: 20 }}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Editar Perfil de Usuario</Text>
+          <View
+            style={[
+              styles.modalContent,
+              { maxHeight: "82%", paddingBottom: 10 },
+            ]}
+          >
+            <Text style={styles.modalTitle}>Editar Perfil de Usuario</Text>
 
-              <View style={{ alignItems: "center", marginBottom: 15 }}>
+            <ScrollView
+              showsVerticalScrollIndicator={true}
+              contentContainerStyle={{
+                paddingBottom: 25,
+                paddingHorizontal: 4,
+              }}
+            >
+              <View style={{ alignItems: "center", marginBottom: 12 }}>
                 <TouchableOpacity
                   style={styles.logoContainerModal}
                   onPress={handlePickAndUploadAvatar}
@@ -1181,7 +1626,7 @@ export default function DashboardScreen() {
 
               <Text style={styles.inputLabel}>Biografía:</Text>
               <TextInput
-                style={[styles.input, { height: 80, textAlignVertical: "top" }]}
+                style={[styles.input, { height: 75, textAlignVertical: "top" }]}
                 placeholder="Cuéntanos algo sobre ti..."
                 placeholderTextColor="#666"
                 value={editBio}
@@ -1190,7 +1635,7 @@ export default function DashboardScreen() {
               />
 
               <TouchableOpacity
-                style={styles.secondaryButton}
+                style={[styles.secondaryButton, { marginTop: 12 }]}
                 onPress={() => {
                   setPasswordAlert(null);
                   setIsPasswordModalVisible(true);
@@ -1206,38 +1651,38 @@ export default function DashboardScreen() {
                   Cambiar contraseña
                 </Text>
               </TouchableOpacity>
+            </ScrollView>
 
-              <View style={styles.buttonRowContainer}>
-                <TouchableOpacity
-                  style={[
-                    styles.modalBtnAction,
-                    { backgroundColor: "#00bcd4", marginRight: 6 },
-                  ]}
-                  onPress={handleUpdateProfile}
+            <View style={styles.buttonRowContainerFixed}>
+              <TouchableOpacity
+                style={[
+                  styles.modalBtnAction,
+                  { backgroundColor: "#00bcd4", marginRight: 6 },
+                ]}
+                onPress={handleUpdateProfile}
+              >
+                <Text
+                  style={{ color: "#000", fontWeight: "bold", fontSize: 14 }}
                 >
-                  <Text
-                    style={{ color: "#000", fontWeight: "bold", fontSize: 14 }}
-                  >
-                    Guardar cambios
-                  </Text>
-                </TouchableOpacity>
+                  Guardar cambios
+                </Text>
+              </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[
-                    styles.modalBtnAction,
-                    { backgroundColor: "#ff9800", marginLeft: 6 },
-                  ]}
-                  onPress={() => setIsEditProfileModalVisible(false)}
+              <TouchableOpacity
+                style={[
+                  styles.modalBtnAction,
+                  { backgroundColor: "#ffffff", marginLeft: 6 },
+                ]}
+                onPress={() => setIsEditProfileModalVisible(false)}
+              >
+                <Text
+                  style={{ color: "#000", fontWeight: "bold", fontSize: 14 }}
                 >
-                  <Text
-                    style={{ color: "#000", fontWeight: "bold", fontSize: 14 }}
-                  >
-                    Cancelar
-                  </Text>
-                </TouchableOpacity>
-              </View>
+                  Volver
+                </Text>
+              </TouchableOpacity>
             </View>
-          </ScrollView>
+          </View>
         </View>
       </Modal>
 
@@ -1421,7 +1866,7 @@ export default function DashboardScreen() {
                 style={styles.modalCloseButton}
                 onPress={() => setIsCreateModalVisible(false)}
               >
-                <Text style={styles.modalCloseButtonText}>Cancelar</Text>
+                <Text style={styles.modalCloseButtonText}>Volver</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
@@ -1458,7 +1903,7 @@ export default function DashboardScreen() {
               style={styles.modalCloseButton}
               onPress={() => setIsCodeModalVisible(false)}
             >
-              <Text style={styles.modalCloseButtonText}>Cancelar</Text>
+              <Text style={styles.modalCloseButtonText}>Volver</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1493,7 +1938,7 @@ export default function DashboardScreen() {
               style={[styles.modalCloseButton, { marginTop: 15 }]}
               onPress={() => setIsGenrePickerVisible(false)}
             >
-              <Text style={styles.modalCloseButtonText}>Cerrar</Text>
+              <Text style={styles.modalCloseButtonText}>volver</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1685,6 +2130,44 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 10,
   },
+  googleSyncedBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 8,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: "#2a2a2a",
+  },
+  googleSyncedBadgeText: {
+    color: "#4caf50",
+    fontSize: 12,
+    fontWeight: "bold",
+  },
+  deletedAlertBodyText: {
+    color: "#ddd",
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 10,
+  },
+  deletedAlertSubText: {
+    color: "#aaa",
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  modalCloseButtonWhite: {
+    backgroundColor: "#333",
+    borderWidth: 1,
+    borderColor: "#555",
+    padding: 12,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  modalCloseButtonWhiteText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "bold",
+  },
   miniEventName: { color: "#fff", fontWeight: "bold", fontSize: 16 },
   miniEventDate: { color: "#ffffff", fontSize: 16, fontWeight: "bold" },
   miniEventTime: { color: "#ffffff", fontSize: 16, fontWeight: "bold" },
@@ -1712,7 +2195,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 20,
     borderWidth: 1,
-    maxHeight: "85%",
+    maxHeight: "88%",
   },
   modalBandHeaderRow: {
     flexDirection: "row",
@@ -1765,7 +2248,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   modalScrollList: {
-    maxHeight: 220,
+    maxHeight: 200,
     marginBottom: 10,
   },
   modalSongItemPlain: {
@@ -1779,6 +2262,61 @@ const styles = StyleSheet.create({
   modalSongTitlePlain: {
     color: "#fff",
     fontSize: 15,
+    fontWeight: "bold",
+  },
+  googleCalendarBox: {
+    backgroundColor: "#141414",
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#2e2e2e",
+    marginBottom: 4,
+  },
+  googleReminderLabel: {
+    color: "#ccc",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  reminderChip: {
+    backgroundColor: "#222",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+    marginRight: 6,
+    borderWidth: 1,
+    borderColor: "#333",
+  },
+  reminderChipActive: {
+    backgroundColor: "#122a2e",
+    borderColor: "#00bcd4",
+  },
+  reminderChipText: {
+    color: "#aaa",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  reminderChipTextActive: {
+    color: "#00bcd4",
+    fontWeight: "bold",
+  },
+  googleCalendarButton: {
+    backgroundColor: "#252525",
+    borderWidth: 1,
+    borderColor: "#00bcd4",
+    borderRadius: 8,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  googleCalendarButtonSynced: {
+    backgroundColor: "#132615",
+    borderColor: "#4caf50",
+  },
+  googleCalendarButtonText: {
+    color: "#ffffff",
+    fontSize: 14,
     fontWeight: "bold",
   },
   modalTitle: {
@@ -1876,8 +2414,19 @@ const styles = StyleSheet.create({
     borderColor: "#333",
   },
   pickerButtonText: { color: "#fff", fontSize: 14 },
-  modalCloseButton: { marginTop: 12, padding: 10, alignItems: "center" },
-  modalCloseButtonText: { color: "#888", fontSize: 14 },
+  modalCloseButton: {
+    backgroundColor: "#ffffff", // Fondo blanco
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 12,
+  },
+  modalCloseButtonText: {
+    color: "#000000", // Letras en negro
+    fontWeight: "bold",
+    fontSize: 14,
+  },
   modalCloseButtonDynamic: {
     padding: 12,
     borderRadius: 8,
@@ -1892,6 +2441,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     marginTop: 15,
+  },
+  buttonRowContainerFixed: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#2a2a2a",
   },
   modalBtn: {
     flex: 1,

@@ -24,11 +24,8 @@ export default function MembersScreen() {
   const [bandCreatorId, setBandCreatorId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (bandId) {
-      loadBandDataAndMembers();
-    } else {
-      setLoading(false);
-    }
+    if (!bandId) return;
+    loadBandDataAndMembers();
   }, [bandId]);
 
   const loadBandDataAndMembers = async () => {
@@ -40,7 +37,6 @@ export default function MembersScreen() {
 
       if (!activeUserId) return;
 
-      // 1. Consultar la tabla 'bands' para saber quién es el creador de la banda
       const { data: bandData, error: bandError } = await supabase
         .from("bands")
         .select("created_by")
@@ -51,7 +47,6 @@ export default function MembersScreen() {
       const creatorId = bandData?.created_by || null;
       setBandCreatorId(creatorId);
 
-      // 2. Cargar los miembros de la banda haciendo un JOIN con la tabla 'profiles'
       const { data: membersData, error: membersError } = await supabase
         .from("band_members")
         .select(
@@ -74,7 +69,7 @@ export default function MembersScreen() {
 
       if (membersData) {
         const formattedMembers = membersData.map((m: any) => ({
-          id: m.id, // ID del registro en band_members
+          id: m.id,
           userId: m.user_id,
           name: m.profiles?.full_name || "Músico sin nombre",
           role: m.role || "Miembro",
@@ -85,12 +80,10 @@ export default function MembersScreen() {
             m.role ||
             "Músico",
           avatarUrl: m.profiles?.avatar_url || null,
-          // Identificamos visualmente si este miembro es el creador
           isCreator: m.user_id === creatorId,
         }));
         setMembers(formattedMembers);
 
-        // 3. Comprobar si el usuario actual es admin o el creador de esta banda
         const currentUserMember = membersData.find(
           (m: any) => m.user_id === activeUserId,
         );
@@ -156,7 +149,8 @@ export default function MembersScreen() {
     );
   };
 
-  if (loading) {
+  // PANTALLA DE CARGA INICIAL SI EL BANDID AÚN NO LLEGÓ DEL LAYOUT
+  if (!bandId || loading) {
     return (
       <View
         style={[
@@ -197,7 +191,6 @@ export default function MembersScreen() {
 
             return (
               <View style={styles.memberCard}>
-                {/* AVATAR */}
                 {item.avatarUrl ? (
                   <Image
                     source={{ uri: item.avatarUrl }}
@@ -209,7 +202,6 @@ export default function MembersScreen() {
                   </View>
                 )}
 
-                {/* INFORMACIÓN DEL MIEMBRO */}
                 <View style={{ flex: 1, marginRight: 8 }}>
                   <View style={styles.nameRow}>
                     <Text style={styles.memberName} numberOfLines={1}>
@@ -226,14 +218,12 @@ export default function MembersScreen() {
                   </Text>
                 </View>
 
-                {/* BOTÓN DE ELIMINAR (SOLO ADMINS) */}
                 {canDelete && (
                   <TouchableOpacity
                     onPress={() =>
                       handleRemoveMember(item.id, item.name, item.isCreator)
                     }
                     style={styles.deleteButton}
-                    title="Dar de baja"
                   >
                     <Ionicons name="trash-outline" size={20} color="#ff5252" />
                   </TouchableOpacity>
@@ -255,11 +245,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     marginTop: 4,
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#fff",
-  },
+  headerTitle: { fontSize: 20, fontWeight: "bold", color: "#fff" },
   memberCard: {
     backgroundColor: "#1e1e1e",
     padding: 14,
@@ -289,11 +275,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 12,
   },
-  nameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 3,
-  },
+  nameRow: { flexDirection: "row", alignItems: "center", marginBottom: 3 },
   memberName: {
     color: "#fff",
     fontSize: 16,

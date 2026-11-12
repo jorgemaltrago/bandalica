@@ -4,6 +4,7 @@ import * as Print from "expo-print";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Linking,
   Modal,
   Platform,
@@ -34,24 +35,20 @@ export default function CalendarScreen() {
     currentDayToday,
   );
 
-  // Estados del formulario de eventos nuevos
   const [eventName, setEventName] = useState("");
   const [eventType, setEventType] = useState("Ensayo");
   const [eventTime, setEventTime] = useState("20:00");
   const [eventNotes, setEventNotes] = useState("");
 
-  // Listas de datos desde Supabase
   const [bandSongs, setBandSongs] = useState<any[]>([]);
   const [selectedSongs, setSelectedSongs] = useState<string[]>([]);
   const [eventsList, setEventsList] = useState<any[]>([]);
   const [bandName, setBandName] = useState("Nombre de la Banda");
   const [bandLogo, setBandLogo] = useState<string | null>(null);
 
-  // Estado temporal compartido para la selección múltiple en modales
   const [tempSelectedSongs, setTempSelectedSongs] = useState<string[]>([]);
   const [isSongModalVisible, setIsSongModalVisible] = useState(false);
 
-  // ESTADOS PARA MODALES INTERACTIVOS DE DETALLE Y EDICIÓN
   const [selectedEventDetails, setSelectedEventDetails] = useState<any | null>(
     null,
   );
@@ -66,14 +63,11 @@ export default function CalendarScreen() {
   const [isSongDetailModalVisible, setIsSongDetailModalVisible] =
     useState(false);
 
-  // Modal unificado para editar canciones en un evento YA existente
   const [isEditSongModalVisible, setIsEditSongModalVisible] = useState(false);
 
-  // ESTADOS PARA EL MODAL DE CONFIRMACIÓN DE BORRADO DE EVENTO
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [eventToDeleteId, setEventToDeleteId] = useState<string | null>(null);
 
-  // Estado para el mensaje flotante (Toast)
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -134,10 +128,9 @@ export default function CalendarScreen() {
   };
 
   useEffect(() => {
-    if (bandId) {
-      loadCalendarData();
-      loadBandInfo();
-    }
+    if (!bandId) return;
+    loadCalendarData();
+    loadBandInfo();
   }, [bandId, month, year]);
 
   const loadBandInfo = async () => {
@@ -151,9 +144,7 @@ export default function CalendarScreen() {
         if (data.name) setBandName(data.name);
         if (data.logo_url) setBandLogo(data.logo_url);
       }
-    } catch (e) {
-      // Ignorar
-    }
+    } catch (e) {}
   };
 
   const loadCalendarData = async () => {
@@ -288,7 +279,6 @@ export default function CalendarScreen() {
               .event-title { font-size: 28px; color: #222; margin-bottom: 1px; font-weight: bold; text-align: center; }
               .event-date { font-size: 22px; color: #555; margin-bottom: 10px; text-align: center; }
               .list-container { width: 100%; text-align: left; overflow: hidden; }
-              
               .song-item {
                 margin-bottom: 4px;
                 font-size: 36px !important;
@@ -302,10 +292,7 @@ export default function CalendarScreen() {
                 width: 100%;
                 line-height: 1.05;
               }
-
-              @media print {
-                body { -webkit-print-color-adjust: exact; }
-              }
+              @media print { body { -webkit-print-color-adjust: exact; } }
             </style>
           </head>
           <body>
@@ -314,11 +301,9 @@ export default function CalendarScreen() {
                 ${logoHtml}
                 <div class="band-name">${bandName}</div>
               </div>
-
               <div class="event-title">${selectedEventDetails?.name}</div>
               <div class="event-date">${selectedEventDetails?.dateString} - ${selectedEventDetails?.time}</div>
             </div>
-
             <div class="list-container">
               ${songsHtml}
             </div>
@@ -350,13 +335,10 @@ export default function CalendarScreen() {
 
   const calculateTotalDuration = (songsList: any[]) => {
     if (!songsList || songsList.length === 0) return "0 min";
-
     let totalSeconds = 0;
-
     songsList.forEach((song) => {
       const dur = song?.duration;
       if (!dur) return;
-
       if (typeof dur === "string") {
         const cleanDur = dur.trim();
         if (cleanDur.includes(":")) {
@@ -371,12 +353,9 @@ export default function CalendarScreen() {
         totalSeconds += dur * 60;
       }
     });
-
     if (totalSeconds === 0) return "0 min";
-
     const totalMins = Math.floor(totalSeconds / 60);
     const remainingSecs = totalSeconds % 60;
-
     if (remainingSecs > 0) {
       return `${totalMins} min ${remainingSecs} seg`;
     }
@@ -692,6 +671,22 @@ export default function CalendarScreen() {
         ? "#ff9800"
         : "#ffffff";
 
+  if (!bandId || loading) {
+    return (
+      <View
+        style={[
+          styles.container,
+          { justifyContent: "center", alignItems: "center" },
+        ]}
+      >
+        <ActivityIndicator size="large" color="#00bcd4" />
+        <Text style={{ color: "#aaa", marginTop: 10 }}>
+          Cargando calendario...
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       {toastMessage && (
@@ -762,19 +757,15 @@ export default function CalendarScreen() {
                   evType === "Actuación" && styles.cellActuacion,
                   evType === "Otro" && styles.cellOtro,
                   isSelected && styles.dayCellSelected,
+                  isToday && styles.todayCircleCell,
                 ]}
                 onPress={() => setSelectedDay(day)}
               >
                 <Text
-                  style={[
-                    styles.dayText,
-                    isToday && styles.todayCellText,
-                    isSelected && styles.dayTextSelected,
-                  ]}
+                  style={[styles.dayText, isSelected && styles.dayTextSelected]}
                 >
                   {day}
                 </Text>
-                {isToday && <View style={styles.todayUnderlineBar} />}
               </TouchableOpacity>
             );
           })}
@@ -1136,10 +1127,10 @@ export default function CalendarScreen() {
         </View>
       )}
 
-      {/* MODAL 1 DE SELECCIÓN MÚLTIPLE (EVENTO NUEVO) */}
+      {/* MODAL SELECCIÓN CANCIONES */}
       <Modal visible={isSongModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { maxHeight: "85%" }]}>
             <View
               style={{
                 flexDirection: "row",
@@ -1244,7 +1235,7 @@ export default function CalendarScreen() {
         </View>
       </Modal>
 
-      {/* MODAL 1: DETALLES Y EDICIÓN DEL EVENTO */}
+      {/* MODAL DETALLES DE EVENTO */}
       <Modal
         visible={isEventDetailsModalVisible}
         transparent
@@ -1267,7 +1258,6 @@ export default function CalendarScreen() {
                   { borderColor: detailModalBorderColor, maxHeight: "90%" },
                 ]}
               >
-                {/* ScrollView unificado para toda la tarjeta del modal */}
                 <ScrollView
                   showsVerticalScrollIndicator={true}
                   contentContainerStyle={{ paddingBottom: 10 }}
@@ -1337,17 +1327,12 @@ export default function CalendarScreen() {
                     </Text>
                   </View>
 
-                  {/* BLOQUE DE EDICIÓN DE HORA Y ANOTACIONES */}
                   <View style={styles.editTimeBox}>
                     <Text style={styles.labelSmall}>Hora (HH:MM):</Text>
                     <TextInput
                       style={[
                         styles.input,
-                        {
-                          marginBottom: 8,
-                          padding: 10,
-                          fontSize: 15,
-                        },
+                        { marginBottom: 8, padding: 10, fontSize: 15 },
                       ]}
                       value={editingEventTime}
                       onChangeText={setEditingEventTime}
@@ -1433,7 +1418,6 @@ export default function CalendarScreen() {
                     </Text>
                   </View>
 
-                  {/* Lista de canciones con View simple para fluir con el scroll general */}
                   <View style={{ marginBottom: 10 }}>
                     {selectedEventDetails?.songsOrderedList?.length === 0 ? (
                       <Text style={styles.emptyText}>
@@ -1510,7 +1494,6 @@ export default function CalendarScreen() {
                     )}
                   </View>
 
-                  {/* Botones del final accesibles haciendo scroll hasta abajo */}
                   <View
                     style={{
                       flexDirection: "row",
@@ -1538,11 +1521,7 @@ export default function CalendarScreen() {
                     <TouchableOpacity
                       style={[
                         styles.modalCloseButtonDynamic,
-                        {
-                          flex: 1,
-                          marginTop: 0,
-                          backgroundColor: "#00bcd4",
-                        },
+                        { flex: 1, marginTop: 0, backgroundColor: "#ffffff" },
                       ]}
                       onPress={() => setIsEventDetailsModalVisible(false)}
                     >
@@ -1552,18 +1531,14 @@ export default function CalendarScreen() {
                           { color: "#000000" },
                         ]}
                       >
-                        Cerrar
+                        Volver
                       </Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
                       style={[
                         styles.modalCloseButtonDynamic,
-                        {
-                          flex: 1,
-                          marginTop: 0,
-                          backgroundColor: "#ffffff",
-                        },
+                        { flex: 1, marginTop: 0, backgroundColor: "#00bcd4" },
                       ]}
                       onPress={handlePrintSetlist}
                     >
@@ -1584,10 +1559,10 @@ export default function CalendarScreen() {
         })()}
       </Modal>
 
-      {/* MODAL 2 DE SELECCIÓN MÚLTIPLE PARA EVENTO EXISTENTE */}
+      {/* MODAL EDITAR CANCIONES DE EVENTO */}
       <Modal visible={isEditSongModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { maxHeight: "85%" }]}>
             <View
               style={{
                 flexDirection: "row",
@@ -1614,7 +1589,6 @@ export default function CalendarScreen() {
               ) : (
                 bandSongs.map((song) => {
                   const isChecked = tempSelectedSongs.includes(song.id);
-
                   return (
                     <TouchableOpacity
                       key={song.id}
@@ -1694,7 +1668,7 @@ export default function CalendarScreen() {
         </View>
       </Modal>
 
-      {/* MODAL 2: CARACTERÍSTICAS DE LA CANCIÓN SELECCIONADA */}
+      {/* MODAL DETALLES DE CANCIÓN */}
       <Modal
         visible={isSongDetailModalVisible}
         transparent
@@ -1808,7 +1782,7 @@ export default function CalendarScreen() {
         </View>
       </Modal>
 
-      {/* MODAL DE CONFIRMACIÓN PARA BORRAR EVENTO */}
+      {/* MODAL BORRAR EVENTO */}
       <Modal visible={isDeleteModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View
@@ -1896,11 +1870,7 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     width: "100%",
   },
-  toastText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "bold",
-  },
+  toastText: { color: "#fff", fontSize: 15, fontWeight: "bold" },
   cardCalendar: {
     backgroundColor: "#1e1e1e",
     borderRadius: 12,
@@ -1929,10 +1899,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     marginBottom: 12,
   },
-  cardAddModuleTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-  },
+  cardAddModuleTitle: { fontSize: 18, fontWeight: "bold" },
   calendarNavHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -1953,11 +1920,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 15,
   },
-  daysGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginBottom: -6,
-  },
+  daysGrid: { flexDirection: "row", flexWrap: "wrap", marginBottom: -6 },
   dayCell: {
     width: "14%",
     aspectRatio: 1.0,
@@ -1979,21 +1942,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#616161",
   },
+  todayCircleCell: {
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: "#ffffff",
+  },
   dayText: { color: "#ccc", fontSize: 14 },
-  todayCellText: { color: "#9e9e9e", fontWeight: "bold", fontSize: 22 },
-  todayUnderlineBar: {
-    position: "absolute",
-    bottom: 3,
-    width: "55%",
-    height: 2.5,
-    backgroundColor: "#ffffff",
-    borderRadius: 2,
-  },
   dayTextSelected: { color: "#ffffff", fontWeight: "bold" },
-  cardTitleEvents: {
-    fontSize: 18,
-    fontWeight: "bold",
-  },
+  cardTitleEvents: { fontSize: 18, fontWeight: "bold" },
   subSectionTitle: {
     fontSize: 16,
     color: "#bbb",
@@ -2012,16 +1968,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#2a2a2a",
   },
-  estimatedDurationText: {
-    fontSize: 14,
-    color: "#aaa",
-  },
-  labelSmall: {
-    fontSize: 14,
-    color: "#aaa",
-    marginBottom: 4,
-    marginTop: 6,
-  },
+  estimatedDurationText: { fontSize: 14, color: "#aaa" },
+  labelSmall: { fontSize: 14, color: "#aaa", marginBottom: 4, marginTop: 6 },
   input: {
     backgroundColor: "#121212",
     borderWidth: 1,
@@ -2047,18 +1995,9 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     marginHorizontal: 2,
   },
-  typeButtonEnsayoActive: {
-    borderColor: "#ffffff",
-    borderWidth: 2,
-  },
-  typeButtonActuacionActive: {
-    borderColor: "#ff9800",
-    borderWidth: 2,
-  },
-  typeButtonOtroActive: {
-    borderColor: "#ffffff",
-    borderWidth: 2,
-  },
+  typeButtonEnsayoActive: { borderColor: "#ffffff", borderWidth: 2 },
+  typeButtonActuacionActive: { borderColor: "#ff9800", borderWidth: 2 },
+  typeButtonOtroActive: { borderColor: "#ffffff", borderWidth: 2 },
   typeButtonText: { color: "#aaa", fontSize: 15 },
   typeButtonTextEnsayoActive: {
     color: "#ffffff",
@@ -2138,30 +2077,15 @@ const styles = StyleSheet.create({
     padding: 18,
     borderWidth: 1,
   },
-  modalTitleWhite: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#ffffff",
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#ffffff",
-  },
+  modalTitleWhite: { fontSize: 20, fontWeight: "bold", color: "#ffffff" },
+  modalTitle: { fontSize: 20, fontWeight: "bold", color: "#ffffff" },
   modalSongHeaderTitleClean: {
     fontSize: 20,
     fontWeight: "bold",
     color: "#00bcd4",
   },
-  modalDateInfo: {
-    fontSize: 14,
-    color: "#aaa",
-    marginBottom: 4,
-  },
-  modalTypeBadgeText: {
-    fontSize: 15,
-    fontWeight: "bold",
-  },
+  modalDateInfo: { fontSize: 14, color: "#aaa", marginBottom: 4 },
+  modalTypeBadgeText: { fontSize: 15, fontWeight: "bold" },
   editTimeBox: {
     backgroundColor: "#121212",
     padding: 10,
@@ -2183,7 +2107,7 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     fontSize: 13,
   },
-  modalScrollList: { marginBottom: 10 },
+  modalScrollList: { flexShrink: 1, marginBottom: 10 },
   modalSongItem: {
     backgroundColor: "#121212",
     padding: 14,
@@ -2192,10 +2116,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#2a2a2a",
   },
-  modalSongItemChecked: {
-    borderColor: "#2a2a2a",
-    backgroundColor: "#122a2e",
-  },
+  modalSongItemChecked: { borderColor: "#2a2a2a", backgroundColor: "#122a2e" },
   modalSongTitle: { color: "#fff", fontWeight: "bold", fontSize: 17 },
   modalSongMeta: { color: "#aaa", fontSize: 14, marginTop: 3 },
   modalSongMetaLarge: { color: "#bbb", fontSize: 15, marginTop: 3 },
@@ -2266,9 +2187,7 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 15,
   },
-  songDetailContainer: {
-    marginVertical: 5,
-  },
+  songDetailContainer: { marginVertical: 5 },
   songDetailTitle: {
     fontSize: 22,
     fontWeight: "bold",
@@ -2286,14 +2205,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 10,
   },
-  songDetailText: {
-    color: "#ddd",
-    fontSize: 16,
-  },
-  boldText: {
-    fontWeight: "bold",
-    color: "#00bcd4",
-  },
+  songDetailText: { color: "#ddd", fontSize: 16 },
+  boldText: { fontWeight: "bold", color: "#00bcd4" },
   lyricsScroll: {
     backgroundColor: "#121212",
     padding: 12,
@@ -2303,11 +2216,7 @@ const styles = StyleSheet.create({
     borderColor: "#2a2a2a",
     marginTop: 8,
   },
-  lyricsText: {
-    color: "#ccc",
-    fontSize: 15,
-    lineHeight: 22,
-  },
+  lyricsText: { color: "#ccc", fontSize: 15, lineHeight: 22 },
   consultPdfButton: {
     backgroundColor: "#00bcd4",
     flexDirection: "row",
@@ -2317,12 +2226,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginTop: 10,
   },
-  consultPdfButtonText: {
-    color: "#000",
-    fontWeight: "bold",
-    fontSize: 15,
-  },
-  iconButtonAction: {
-    padding: 6,
-  },
+  consultPdfButtonText: { color: "#000", fontWeight: "bold", fontSize: 15 },
+  iconButtonAction: { padding: 6 },
 });

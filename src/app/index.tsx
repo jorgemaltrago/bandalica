@@ -181,7 +181,15 @@ export default function WelcomeScreen() {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>🔑 Iniciar Sesión</Text>
+        <View style={styles.loginTitleRow}>
+          <Ionicons
+            name="lock-closed-outline"
+            size={22}
+            color="#ff9800"
+            style={{ marginRight: 8 }}
+          />
+          <Text style={styles.cardTitle}>Iniciar Sesión</Text>
+        </View>
 
         <TextInput
           style={styles.input}
@@ -248,7 +256,7 @@ export default function WelcomeScreen() {
         <Text style={styles.authorText}>
           Jorge Martín Cabello{"\n"}© 2026. Todos los derechos reservados.
         </Text>
-        <Text style={styles.testModeText}>Bandalica V1.1</Text>
+        <Text style={styles.testModeText}>Bandalica V2.0</Text>
 
         {/* ENLACE A POLÍTICA DE USO */}
         <TouchableOpacity
@@ -456,11 +464,16 @@ const styles = StyleSheet.create({
     borderColor: "#fff",
     marginBottom: 16,
   },
+  loginTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 14,
+  },
   cardTitle: {
     fontSize: 21,
     fontWeight: "bold",
     color: "#ff9800",
-    marginBottom: 14,
     textAlign: "center",
   },
   input: {
