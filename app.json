@@ -1,8 +1,8 @@
 {
   "expo": {
     "name": "Bandalica",
-    "slug": "BandalicaWeb",
-    "version": "1.0.0",
+    "slug": "appbandalica",
+    "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./src/assets/logo2.png",
     "scheme": "bandalica",
@@ -12,12 +12,12 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#208AEF",
+        "backgroundColor": "#000000",
         "foregroundImage": "./src/assets/logo2.png",
         "monochromeImage": "./src/assets/logo2.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.jorgemaltrago.Bandalica"
+      "package": "com.jorgemartincabello.appbandalica"
     },
     "web": {
       "output": "static",
@@ -29,21 +29,28 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
-          "image": "./src/assets/logo.png",
-          "imageWidth": 76
+          "backgroundColor": "#000000",
+          "image": "./src/assets/logo2.png",
+          "imageWidth": 200
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      "expo-status-bar",
+      "expo-web-browser"
     ],
     "experiments": {
-      "baseUrl": "/BandalicaWeb",
+      "baseUrl": "/Bandalica",
       "typedRoutes": true,
-      "reactCompiler": true
+      "reactCompiler": false
     },
     "extra": {
       "eas": {
-        "projectId": "68a0d843-ee49-4990-b683-6bcfe0e8d7d0"
+        "projectId": "026faa8b-d15c-4d7c-98b3-5dd90b08c0da"
+      },
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
       }
     }
   }
